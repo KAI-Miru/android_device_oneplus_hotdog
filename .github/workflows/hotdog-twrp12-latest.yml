@@ -28,7 +28,9 @@ jobs:
       DEVICE_PATH: device/oneplus/hotdog
       BUILD_TARGET: recoveryimage
       RECOVERY_IMAGE_REL: out/target/product/hotdog/recovery.img
-      RECOVERY_PARTITION_SIZE: "104857600"
+      RECOVERY_PARTITION_SIZE: "100663296"
+      OPENAES_FIX_SHA256: 5414a941b2263cbeedd845e0b023d69c9624d3efa092403f7153085b8fd3676c
+      TASK_PROFILES_FIX_SHA256: 452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364
       PREBUILT_KERNEL_SHA256: 5cce136f5ebcede8ac03ae896dc64dc160c30c9ead981ae52d586e3598f578be
       PREBUILT_DTB_SHA256: 5fe452d09b59cf169662a0ec1f25a8d4ac9cd217852a28c8908a5b5c3860ad5a
       PREBUILT_DTBO_SHA256: bd9640691f9d543204deb107e92de4f8ecf117e52d79b79cead8de031450d465
@@ -111,6 +113,39 @@ jobs:
           "$HOME/bin/repo" sync --force-sync --no-clone-bundle --no-tags \
             --optimized-fetch --prune --fail-fast -j"$BUILD_JOBS"
 
+      - name: Apply reviewed snapshot compatibility fixes
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/twrp"
+          recovery_patch="$PWD/$DEVICE_PATH/ci/twrp12-openaes-fix.patch"
+          profiles_patch="$PWD/$DEVICE_PATH/ci/twrp12-task-profiles-fix.patch"
+
+          printf '%s  %s\n' \
+            "$OPENAES_FIX_SHA256" "$recovery_patch" \
+            "$TASK_PROFILES_FIX_SHA256" "$profiles_patch" \
+            | sha256sum --check - \
+            | tee "$GITHUB_WORKSPACE/snapshot-patches.sha256"
+
+          git -C bootable/recovery apply --check --whitespace=error-all \
+            "$recovery_patch"
+          git -C bootable/recovery apply --whitespace=error-all \
+            "$recovery_patch"
+          git -C system/core apply --check --whitespace=error-all \
+            "$profiles_patch"
+          git -C system/core apply --whitespace=error-all \
+            "$profiles_patch"
+
+          test "$(git -C bootable/recovery diff --name-only | sort)" = \
+            $'Android.mk\nprebuilt/Android.mk'
+          test "$(git -C system/core diff --name-only)" = \
+            'libprocessgroup/profiles/Android.bp'
+          {
+            echo 'bootable/recovery:'
+            git -C bootable/recovery diff --stat
+            echo 'system/core:'
+            git -C system/core diff --stat
+          } | tee "$GITHUB_WORKSPACE/snapshot-patch-paths.txt"
+
       - name: Verify and record source snapshot
         run: |
           set -euo pipefail
@@ -159,6 +194,16 @@ jobs:
             | tee "$GITHUB_WORKSPACE/kernel-source-project-scan.txt"
 
           git -C "$DEVICE_PATH" diff --check
+          git -C bootable/recovery diff --check
+          git -C system/core diff --check
+          test ! -e "$DEVICE_PATH/recovery/root/system/etc/task_profiles.json"
+          if LC_ALL=C grep -q $'\r' \
+            "$DEVICE_PATH/recovery/root/system/bin/unified-script.sh"
+          then
+            echo "unified-script.sh contains CRLF bytes" >&2
+            exit 1
+          fi
+          sh -n "$DEVICE_PATH/recovery/root/system/bin/unified-script.sh"
           awk '
             /^on / { section = $0 }
             /^[[:space:]]+start boot-hal-1-0[[:space:]]*$/ {
@@ -188,6 +233,8 @@ jobs:
             echo "qcom_common=$(git -C device/qcom/common rev-parse HEAD)"
             echo "qcom_twrp_common=$(git -C device/qcom/twrp-common rev-parse HEAD)"
             echo "device=$(git -C "$DEVICE_PATH" rev-parse HEAD)"
+            echo "openaes_fix_sha256=$OPENAES_FIX_SHA256"
+            echo "task_profiles_fix_sha256=$TASK_PROFILES_FIX_SHA256"
             echo "build_target=$BUILD_TARGET"
             echo "kernel_source_project_synced=false"
             echo "kernel_build_target_requested=false"
@@ -202,7 +249,6 @@ jobs:
           # are not compatible with Bash nounset mode.
           set -eo pipefail
           cd "$RUNNER_TEMP/twrp"
-          export ALLOW_MISSING_DEPENDENCIES=true
           export BUILD_USERNAME=KAI-Miru
           export BUILD_HOSTNAME=github-actions
           source build/envsetup.sh
@@ -295,7 +341,6 @@ jobs:
           # Keep nounset disabled while using Android's envsetup/build helpers.
           set -eo pipefail
           cd "$RUNNER_TEMP/twrp"
-          export ALLOW_MISSING_DEPENDENCIES=true
           export BUILD_USERNAME=KAI-Miru
           export BUILD_HOSTNAME=github-actions
           source build/envsetup.sh
@@ -310,6 +355,13 @@ jobs:
           set -euo pipefail
           cd "$RUNNER_TEMP/twrp"
           recovery_image="$RUNNER_TEMP/twrp/$RECOVERY_IMAGE_REL"
+          installed_task_profiles="out/target/product/hotdog/recovery/root/system/etc/task_profiles.json"
+          cmp system/core/libprocessgroup/profiles/task_profiles.json \
+            "$installed_task_profiles"
+          sha256sum \
+            system/core/libprocessgroup/profiles/task_profiles.json \
+            "$installed_task_profiles" \
+            | tee "$GITHUB_WORKSPACE/task-profiles-check.sha256"
           bash "$DEVICE_PATH/ci/verify-hotdog-recovery-image.sh" \
             "$RUNNER_TEMP/twrp" \
             "$recovery_image" \
@@ -358,6 +410,8 @@ jobs:
             build-configuration.txt
             prebuilt-source-check.txt
             source-fingerprints.sha256
+            snapshot-patches.sha256
+            snapshot-patch-paths.txt
             kernel-source-project-scan.txt
             init-source-check.txt
             build.log
@@ -365,5 +419,6 @@ jobs:
             recovery-component-sha256.txt
             recovery-image-layout.txt
             recovery-image.sha256
+            task-profiles-check.sha256
           if-no-files-found: warn
           retention-days: 14

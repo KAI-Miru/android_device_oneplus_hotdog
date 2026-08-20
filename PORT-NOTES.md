@@ -59,17 +59,28 @@ fstab, or partition sizes.
 - The known 5G modem/SPU partitions receive the same compatibility aliases as
   the Android 12 hotdog reference. Their source paths and OTA behavior remain
   part of the hotdogg device-test gate.
-- Encrypted-backup exclusion is expressed as literal `true`; TWRP mixes
-  non-empty and exact-`true` checks, so the old literal `false` produced
-  inconsistent behavior. Screen blanking uses the panel-safe brightness path
-  (maximum 1023, default 200) instead of a framebuffer blank that the Android
-  12 reference reports can disable touch.
+- Encrypted-backup exclusion is expressed as literal `true`. The pinned
+  recovery snapshot has contradictory OpenAES conditionals, so CI applies a
+  checksum-pinned three-hunk fix that makes `true` consistently exclude the
+  library, command, and relink request.
+- The pinned recovery also requires a `task_recovery_profiles.json` module that
+  its pinned system/core tree does not define. CI adds that recovery-only module
+  using system/core's own Android 12 `task_profiles.json`; the stale Android 11
+  device-root copy is no longer treated as the module definition.
+- The recovery image is capped at the conservative 96 MiB size corroborated by
+  the newer hotdog tree until the physical ColorOS recovery partition is read
+  from a device. Screen blanking uses the panel-safe brightness path (maximum
+  1023, default 200) instead of a framebuffer blank that the Android 12
+  reference reports can disable touch.
 - Plain ADB gadget binding is left to current TWRP's core init rules. The
   device USB overlay retains only its MTP and compatibility compositions,
   avoiding a second action that unbound and rebound the same configfs link.
 - Make lists have exact final entries without dangling continuations. Local
   `Android.bp`, `bootctrl/`, and `gpt-utils/` definitions remain because an
   exact duplicate replacement has not been proven in the resolved 12.1 tree.
+- The obsolete debuggerd relink request was removed; current recovery no longer
+  consumes its old variable name. All touched scripts are normalized to LF,
+  and CI rejects carriage returns in the variant script before building.
 
 ## Deliberately unresolved runtime gates
 
@@ -128,6 +139,9 @@ Local static validation completed successfully:
 - assertions for dynamic A/B, header v2, dedicated recovery, and unchanged
   kernel/DTB/DTBO/fstab fingerprints;
 - absence of the removed wipe list and Android 11 ashmem references.
+- strict dependency resolution (CI does not set
+  `ALLOW_MISSING_DEPENDENCIES`) plus checksum and path validation of the two
+  pinned snapshot compatibility patches.
 
 This local patch is intended for a GitHub Actions compile-only gate against a
 pinned TWRP 12.1 snapshot. No recovery image was built or tested here. A

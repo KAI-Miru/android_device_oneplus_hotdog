@@ -1,0 +1,18 @@
+diff --git a/libprocessgroup/profiles/Android.bp b/libprocessgroup/profiles/Android.bp
+index 156e90d..0053ab4 100644
+--- a/libprocessgroup/profiles/Android.bp
++++ b/libprocessgroup/profiles/Android.bp
+@@ -48,6 +48,13 @@ prebuilt_etc {
+     ],
+ }
+ 
++prebuilt_etc {
++    name: "task_recovery_profiles.json",
++    filename: "task_profiles.json",
++    recovery: true,
++    src: "task_profiles.json",
++}
++
+ prebuilt_etc {
+     name: "task_profiles_28.json",
+     src: "task_profiles_28.json",
