@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# This script is needed to automatically set device props.
+# Automatically set device props for shared-hardware models and variants.
 
 
 load_op7tpro()
@@ -32,17 +32,35 @@ load_op7t()
     resetprop "ro.display.series" "OnePlus 7T"
 }
 
-project=$(getprop ro.boot.project_name)
-echo $project
+project_codename=$(getprop ro.boot.project_codename)
+project_name=$(getprop ro.boot.project_name)
+echo "Running unified/variant script with codename '$project_codename' and project '$project_name'..." >> /tmp/recovery.log
 
-case $project in
-    "19801")
-        load_op7tpro
-        ;;
-    "18865")
+case "$project_codename" in
+    hotdogb)
         load_op7t
         ;;
+    hotdogg)
+        load_op7tpro5g
+        ;;
+    hotdog)
+        load_op7tpro
+        ;;
     *)
+        case "$project_name" in
+            18865)
+                load_op7t
+                ;;
+            19801)
+                load_op7tpro
+                ;;
+            *)
+                # Unknown hardware must fail closed: keep the product identity
+                # supplied by the bootloader/ROM instead of guessing a model.
+                echo "Unknown hotdog variant; leaving product identity unchanged." >> /tmp/recovery.log
+                ;;
+        esac
+        ;;
 esac
 
 exit 0

@@ -38,6 +38,10 @@ TARGET_2ND_CPU_ABI := armeabi-v7a
 TARGET_2ND_CPU_ABI2 := armeabi
 TARGET_2ND_CPU_VARIANT := cortex-a75
 
+# 64-bit userspace
+TARGET_SUPPORTS_64_BIT_APPS := true
+TARGET_IS_64_BIT := true
+
 ENABLE_CPUSETS := true
 ENABLE_SCHEDBOOST := true
 
@@ -84,6 +88,10 @@ BOARD_MKBOOTIMG_ARGS += --dtb_offset $(BOARD_DTB_OFFSET)
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
 BOARD_MKBOOTIMG_ARGS += --dtb $(TARGET_PREBUILT_DTB)
 
+# hotdog has a dedicated recovery partition.
+BOARD_USES_RECOVERY_AS_BOOT :=
+BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT :=
+
 # Platform
 TARGET_BOARD_PLATFORM := msmnile
 TARGET_BOARD_PLATFORM_GPU := qcom-adreno640
@@ -117,9 +125,6 @@ BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST := \
     product \
     odm
 
-# Partitions (listed in the file) to be wiped under recovery.
-TARGET_RECOVERY_WIPE := $(DEVICE_PATH)/recovery.wipe
-
 # Workaround for error copying vendor files to recovery ramdisk
 BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_VENDOR := vendor
@@ -130,21 +135,19 @@ BOARD_HAS_NO_SELECT_BUTTON := true
 BOARD_SUPPRESS_SECURE_ERASE := true
 TARGET_NO_RECOVERY := false
 TARGET_RECOVERY_DEVICE_MODULES += \
-    android.hidl.base@1.0 \
-    ashmemd \
-    ashmemd_aidl_interface-cpp \
     bootctrl.$(TARGET_BOARD_PLATFORM).recovery \
-    libashmemd_client \
     libcap \
     libion \
-    libpcrecpp \
     libxml2
+
+TW_HAS_RECOVERY_PARTITION := true
 
 # Use mke2fs to create ext4 images
 TARGET_USES_MKE2FS := true
 
 # Encryption
-PLATFORM_VERSION := 20.1.0
+PLATFORM_VERSION := 99.87.36
+PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
 PLATFORM_SECURITY_PATCH := 2099-12-31
 VENDOR_SECURITY_PATCH := 2099-12-31
 TW_INCLUDE_CRYPTO := true
@@ -154,6 +157,8 @@ TW_USE_FSCRYPT_POLICY := 1
 BOARD_USES_METADATA_PARTITION := true
 BOARD_USES_QCOM_FBE_DECRYPTION := true
 PRODUCT_ENFORCE_VINTF_MANIFEST := true
+# TWRP mixes non-empty and exact-"true" checks; use true consistently.
+TW_EXCLUDE_ENCRYPTED_BACKUPS := true
 
 # Extras
 TARGET_SYSTEM_PROP += $(DEVICE_PATH)/system.prop
@@ -165,29 +170,24 @@ TARGET_RECOVERY_PIXEL_FORMAT := BGRA_8888
 TARGET_USE_CUSTOM_LUN_FILE_PATH := /config/usb_gadget/g1/functions/mass_storage.0/lun.%d/file
 TW_THEME := portrait_hdpi
 TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel0-backlight/brightness"
-TW_DEFAULT_BRIGHTNESS := 420
+TW_MAX_BRIGHTNESS := 1023
+TW_DEFAULT_BRIGHTNESS := 200
 TW_Y_OFFSET := 80
 TW_H_OFFSET := -80
 TW_EXCLUDE_DEFAULT_USB_INIT := true
-TW_EXCLUDE_ENCRYPTED_BACKUPS := true
 TW_EXCLUDE_TWRPAPP := true
 TW_EXTRA_LANGUAGES := true
 TW_HAS_EDL_MODE := true
+TW_INCLUDE_FASTBOOTD := true
 TW_INCLUDE_NTFS_3G := true
 TW_INPUT_BLACKLIST := "hbtp_vm"
 TW_NO_BIND_SYSTEM := true
 TW_NO_EXFAT_FUSE := true
 TW_OVERRIDE_SYSTEM_PROPS := \
     "ro.build.product;ro.build.fingerprint=ro.system.build.fingerprint;ro.build.version.incremental;ro.product.device=ro.product.system.device;ro.product.model=ro.product.system.model;ro.product.name=ro.product.system.name"
-TW_RECOVERY_ADDITIONAL_RELINK_BINARY_FILES += \
-    $(TARGET_OUT_EXECUTABLES)/ashmemd
 TW_RECOVERY_ADDITIONAL_RELINK_LIBRARY_FILES += \
-    $(TARGET_OUT_SHARED_LIBRARIES)/android.hidl.base@1.0.so \
-    $(TARGET_OUT_SHARED_LIBRARIES)/ashmemd_aidl_interface-cpp.so \
-    $(TARGET_OUT_SHARED_LIBRARIES)/libashmemd_client.so \
     $(TARGET_OUT_SHARED_LIBRARIES)/libcap.so \
     $(TARGET_OUT_SHARED_LIBRARIES)/libion.so \
-    $(TARGET_OUT_SHARED_LIBRARIES)/libpcrecpp.so \
     $(TARGET_OUT_SHARED_LIBRARIES)/libxml2.so
 
 
@@ -197,5 +197,4 @@ TARGET_USES_LOGD := true
 TWRP_INCLUDE_LOGCAT := true
 TARGET_RECOVERY_DEVICE_MODULES += debuggerd
 TW_RECOVERY_ADDITIONAL_RELINK_FILES += $(TARGET_OUT_EXECUTABLES)/debuggerd
-TW_EXCLUDE_ENCRYPTED_BACKUPS := false
-TW_SCREEN_BLANK_ON_BOOT := true
+TW_NO_SCREEN_BLANK := true
