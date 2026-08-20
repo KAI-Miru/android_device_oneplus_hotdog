@@ -252,8 +252,8 @@ jobs:
           assert_path BOARD_PREBUILT_DTBOIMAGE "$DEVICE_PATH/prebuilt/dtbo.img"
 
           kernel_source="$(get_build_var TARGET_KERNEL_SOURCE)"
-          if [[ -n "$kernel_source" ]]; then
-            echo "TARGET_KERNEL_SOURCE unexpectedly resolved to '$kernel_source'" >&2
+          if [[ -n "$kernel_source" && -e "$kernel_source" ]]; then
+            echo "A kernel source path unexpectedly exists at '$kernel_source'" >&2
             exit 1
           fi
 
