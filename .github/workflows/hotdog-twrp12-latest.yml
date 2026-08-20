@@ -25,11 +25,18 @@ jobs:
       RECOVERY_REVISION: 5c3d206a5eeb3d446bcda8248a405a4b278bab5c
       QCOM_COMMON_REVISION: 2cf934339972feb6f711e5ad182b82157269c7f3
       QCOM_TWRP_COMMON_REVISION: 98506f7919102378c8d52ee7d6a94a867f1b4c55
+      BUILD_MAKE_REVISION: 1b692e2248609f50a27c48cce53b7445cecdcfc5
+      BUILD_SOONG_REVISION: c6c059ab28c8c67921c0838a994bb70d53594aa7
+      VENDOR_TWRP_REVISION: 664ac3aa7a569d28d902734c741a629a59bab32d
+      SYSTEM_CORE_REVISION: ac4f36c7eb076ea2c582061a21dfc49eaa71e623
+      SYSTEM_VOLD_REVISION: a164ba05c5fef288059774a776b2e6e1119957cf
+      MKBOOTIMG_REVISION: b7c1a63df33e6763d2482bc9d33007f67706d131
+      HARDWARE_INTERFACES_REVISION: ae469cee0dce6d71489588126a15da8e67a50102
       DEVICE_PATH: device/oneplus/hotdog
       BUILD_TARGET: recoveryimage
       RECOVERY_IMAGE_REL: out/target/product/hotdog/recovery.img
       RECOVERY_PARTITION_SIZE: "100663296"
-      OPENAES_FIX_SHA256: 5414a941b2263cbeedd845e0b023d69c9624d3efa092403f7153085b8fd3676c
+      OPENAES_FIX_SHA256: be435c026ea0af8d979c71dde853f6920d68bab7a44a40a12b810e67da86a673
       TASK_PROFILES_FIX_SHA256: 452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364
       PREBUILT_KERNEL_SHA256: 5cce136f5ebcede8ac03ae896dc64dc160c30c9ead981ae52d586e3598f578be
       PREBUILT_DTB_SHA256: 5fe452d09b59cf169662a0ec1f25a8d4ac9cd217852a28c8908a5b5c3860ad5a
@@ -102,6 +109,27 @@ jobs:
             <extend-project name="android_device_qcom_twrp-common"
                             path="device/qcom/twrp-common"
                             revision="$QCOM_TWRP_COMMON_REVISION" />
+            <extend-project name="android_build"
+                            path="build/make"
+                            revision="$BUILD_MAKE_REVISION" />
+            <extend-project name="android_build_soong"
+                            path="build/soong"
+                            revision="$BUILD_SOONG_REVISION" />
+            <extend-project name="android_vendor_twrp"
+                            path="vendor/twrp"
+                            revision="$VENDOR_TWRP_REVISION" />
+            <extend-project name="android_system_core"
+                            path="system/core"
+                            revision="$SYSTEM_CORE_REVISION" />
+            <extend-project name="android_system_vold"
+                            path="system/vold"
+                            revision="$SYSTEM_VOLD_REVISION" />
+            <extend-project name="platform/system/tools/mkbootimg"
+                            path="system/tools/mkbootimg"
+                            revision="$MKBOOTIMG_REVISION" />
+            <extend-project name="android_hardware_interfaces"
+                            path="hardware/interfaces"
+                            revision="$HARDWARE_INTERFACES_REVISION" />
             <project path="$DEVICE_PATH"
                      name="${GITHUB_REPOSITORY}"
                      remote="github"
@@ -166,6 +194,13 @@ jobs:
           assert_revision bootable/recovery "$RECOVERY_REVISION"
           assert_revision device/qcom/common "$QCOM_COMMON_REVISION"
           assert_revision device/qcom/twrp-common "$QCOM_TWRP_COMMON_REVISION"
+          assert_revision build/make "$BUILD_MAKE_REVISION"
+          assert_revision build/soong "$BUILD_SOONG_REVISION"
+          assert_revision vendor/twrp "$VENDOR_TWRP_REVISION"
+          assert_revision system/core "$SYSTEM_CORE_REVISION"
+          assert_revision system/vold "$SYSTEM_VOLD_REVISION"
+          assert_revision system/tools/mkbootimg "$MKBOOTIMG_REVISION"
+          assert_revision hardware/interfaces "$HARDWARE_INTERFACES_REVISION"
           assert_revision "$DEVICE_PATH" "$GITHUB_SHA"
 
           printf '%s  %s\n' \
@@ -230,6 +265,11 @@ jobs:
             echo "recovery=$(git -C bootable/recovery rev-parse HEAD)"
             echo "vendor_twrp=$(git -C vendor/twrp rev-parse HEAD)"
             echo "build_make=$(git -C build/make rev-parse HEAD)"
+            echo "build_soong=$(git -C build/soong rev-parse HEAD)"
+            echo "system_core=$(git -C system/core rev-parse HEAD)"
+            echo "system_vold=$(git -C system/vold rev-parse HEAD)"
+            echo "mkbootimg=$(git -C system/tools/mkbootimg rev-parse HEAD)"
+            echo "hardware_interfaces=$(git -C hardware/interfaces rev-parse HEAD)"
             echo "qcom_common=$(git -C device/qcom/common rev-parse HEAD)"
             echo "qcom_twrp_common=$(git -C device/qcom/twrp-common rev-parse HEAD)"
             echo "device=$(git -C "$DEVICE_PATH" rev-parse HEAD)"
@@ -249,6 +289,9 @@ jobs:
           # are not compatible with Bash nounset mode.
           set -eo pipefail
           cd "$RUNNER_TEMP/twrp"
+          # The minimal TWRP manifest intentionally omits CTS/VTS-only defaults.
+          # Critical recovery outputs are asserted explicitly below and after build.
+          export ALLOW_MISSING_DEPENDENCIES=true
           export BUILD_USERNAME=KAI-Miru
           export BUILD_HOSTNAME=github-actions
           source build/envsetup.sh
@@ -341,6 +384,7 @@ jobs:
           # Keep nounset disabled while using Android's envsetup/build helpers.
           set -eo pipefail
           cd "$RUNNER_TEMP/twrp"
+          export ALLOW_MISSING_DEPENDENCIES=true
           export BUILD_USERNAME=KAI-Miru
           export BUILD_HOSTNAME=github-actions
           source build/envsetup.sh
@@ -355,13 +399,34 @@ jobs:
           set -euo pipefail
           cd "$RUNNER_TEMP/twrp"
           recovery_image="$RUNNER_TEMP/twrp/$RECOVERY_IMAGE_REL"
-          installed_task_profiles="out/target/product/hotdog/recovery/root/system/etc/task_profiles.json"
+          recovery_root="out/target/product/hotdog/recovery/root"
+          installed_task_profiles="$recovery_root/system/etc/task_profiles.json"
+          for required in \
+            "$recovery_root/system/bin/recovery" \
+            "$recovery_root/system/bin/prepdecrypt.sh" \
+            "$recovery_root/system/bin/qseecomd" \
+            "$recovery_root/system/bin/android.hardware.keymaster@4.0-service-qti" \
+            "$recovery_root/system/bin/android.hardware.gatekeeper@1.0-service-qti" \
+            "$recovery_root/init.recovery.qcom_decrypt.rc" \
+            "$recovery_root/init.recovery.qcom_decrypt.fbe.rc" \
+            "$installed_task_profiles"
+          do
+            test -s "$required"
+          done
           cmp system/core/libprocessgroup/profiles/task_profiles.json \
             "$installed_task_profiles"
           sha256sum \
             system/core/libprocessgroup/profiles/task_profiles.json \
             "$installed_task_profiles" \
             | tee "$GITHUB_WORKSPACE/task-profiles-check.sha256"
+          readelf -d "$recovery_root/system/bin/recovery" \
+            | tee "$GITHUB_WORKSPACE/recovery-dynamic-section.txt"
+          if grep -Fq 'libopenaes.so' \
+            "$GITHUB_WORKSPACE/recovery-dynamic-section.txt"
+          then
+            echo "recovery unexpectedly links excluded libopenaes.so" >&2
+            exit 1
+          fi
           bash "$DEVICE_PATH/ci/verify-hotdog-recovery-image.sh" \
             "$RUNNER_TEMP/twrp" \
             "$recovery_image" \
@@ -419,6 +484,7 @@ jobs:
             recovery-component-sha256.txt
             recovery-image-layout.txt
             recovery-image.sha256
+            recovery-dynamic-section.txt
             task-profiles-check.sha256
           if-no-files-found: warn
           retention-days: 14

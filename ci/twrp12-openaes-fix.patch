@@ -21,7 +21,7 @@ index d334f33..5c34b89 100644
  endif
  ifeq ($(TW_INCLUDE_FB2PNG), true)
 diff --git a/prebuilt/Android.mk b/prebuilt/Android.mk
-index ee02252..976d5c1 100644
+index ee02252..dcbcd73 100755
 --- a/prebuilt/Android.mk
 +++ b/prebuilt/Android.mk
 @@ -310,6 +310,6 @@ ifneq ($(wildcard system/core/libsparse/Android.*),)
@@ -32,3 +32,11 @@ index ee02252..976d5c1 100644
      RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libopenaes.so
  endif
  ifeq ($(TARGET_USERIMAGES_USE_F2FS), true)
+@@ -485,6 +485,6 @@ include $(BUILD_PHONY_PACKAGE)
+ 
+ # copy license file for OpenAES
+-ifneq ($(TW_EXCLUDE_ENCRYPTED_BACKUPS),)
++ifneq ($(TW_EXCLUDE_ENCRYPTED_BACKUPS),true)
+     include $(CLEAR_VARS)
+     LOCAL_MODULE := openaes_license
+     LOCAL_MODULE_TAGS := optional

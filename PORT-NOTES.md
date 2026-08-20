@@ -61,7 +61,7 @@ fstab, or partition sizes.
   part of the hotdogg device-test gate.
 - Encrypted-backup exclusion is expressed as literal `true`. The pinned
   recovery snapshot has contradictory OpenAES conditionals, so CI applies a
-  checksum-pinned three-hunk fix that makes `true` consistently exclude the
+  checksum-pinned four-hunk fix that makes `true` consistently exclude the
   library, command, and relink request.
 - The pinned recovery also requires a `task_recovery_profiles.json` module that
   its pinned system/core tree does not define. CI adds that recovery-only module
@@ -139,14 +139,17 @@ Local static validation completed successfully:
 - assertions for dynamic A/B, header v2, dedicated recovery, and unchanged
   kernel/DTB/DTBO/fstab fingerprints;
 - absence of the removed wipe list and Android 11 ashmem references.
-- strict dependency resolution (CI does not set
-  `ALLOW_MISSING_DEPENDENCIES`) plus checksum and path validation of the two
-  pinned snapshot compatibility patches.
+- checksum and path validation of the two pinned snapshot compatibility
+  patches. The minimal manifest requires `ALLOW_MISSING_DEPENDENCIES` for
+  omitted CTS/VTS-only defaults; critical recovery outputs are therefore
+  checked explicitly rather than treating that global switch as closure proof.
 
 This local patch is intended for a GitHub Actions compile-only gate against a
-pinned TWRP 12.1 snapshot. No recovery image was built or tested here. A
-successful compile would prove source compatibility only; it would not prove
-mounting, decryption, display/touch, slot switching, fastbootd, or safe flashing.
+guarded, partially pinned TWRP 12.1 source set. CI records the full resolved
+manifest, but it is not yet a complete 253-project lockfile. No recovery image
+was built or tested here. A successful compile would prove source compatibility
+only; it would not prove mounting, decryption, display/touch, slot switching,
+fastbootd, or safe flashing.
 
 First device testing must be non-destructive. Prefer temporary boot only where
 the bootloader supports it; otherwise back up both recovery slots first. Do not

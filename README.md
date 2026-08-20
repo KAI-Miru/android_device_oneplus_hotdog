@@ -10,10 +10,14 @@ Decryption on OOS11 does not work. Might work on custom that uses OOS11 blobs.
 
 ## Android 12.1 test branch
 
-The `codex/hotdog-a12-minimal` branch is a compile-only port to a pinned TWRP
-12.1 snapshot. Its GitHub Actions workflow is the reproducible build recipe; it
-uses strict dependency resolution and builds the dedicated `recoveryimage`
-target from the preserved prebuilt kernel, DTB, and recovery-DTBO.
+The `codex/hotdog-a12-minimal` branch is a compile-only port to a guarded TWRP
+12.1 source set. Its GitHub Actions workflow pins the manifest revision and the
+critical source projects, records the complete resolved manifest, and builds
+the dedicated `recoveryimage` target from the preserved prebuilt kernel, DTB,
+and recovery-DTBO. It is only partially pinned, not a complete 253-project
+lockfile. The minimal manifest omits CTS/VTS-only defaults, so the normal TWRP
+missing-dependency mode is enabled while critical recovery files and image
+components are checked explicitly.
 
 Any Actions image is **untested**. Do not flash it based on a green build alone.
 The current kernel lacks EROFS support, and ColorOS 12 encryption, proprietary
