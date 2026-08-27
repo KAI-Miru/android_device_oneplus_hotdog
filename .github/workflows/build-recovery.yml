@@ -360,7 +360,18 @@ jobs:
           recovery_root="$product_root/recovery/root"
           destination="$RUNNER_TEMP/hotdog-coloros-compiled-payload"
           mkdir -p "$destination/system/bin" "$destination/system/lib64"
-          install -m 0644 "$product_root/recovery.img" "$destination/recovery.img"
+          image="$destination/twrp-hotdog-coloros-12.1-UNTESTED.img"
+          install -m 0644 "$product_root/recovery.img" "$image"
+          sha256sum "$image" > "$destination/twrp-hotdog-coloros-12.1-UNTESTED.img.sha256"
+          cat > "$destination/UNTESTED.txt" <<'EOF'
+          UNTESTED HOTDOG COLOROS ADAPTER BUILD
+
+          Compilation completed successfully. This failsafe artifact is
+          uploaded before post-build validation, so its presence does not mean
+          that ELF, image-layout, boot, mount, or decryption checks passed.
+
+          Do not flash it from this CI result alone.
+          EOF
           for name in recovery oplus_h40_credential_helper keystore2 linker64; do
             if test -f "$recovery_root/system/bin/$name"; then
               install -m 0755 "$recovery_root/system/bin/$name" \
@@ -379,11 +390,11 @@ jobs:
               | xargs -0 sha256sum > SHA256SUMS
           )
 
-      - name: Upload compiled payload failsafe
+      - name: Upload compiled recovery image failsafe
         if: ${{ always() && steps.compiled_failsafe.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: hotdog-coloros-compiled-payload
+          name: hotdog-coloros-UNTESTED-recovery-image
           path: ${{ runner.temp }}/hotdog-coloros-compiled-payload/
           if-no-files-found: error
           compression-level: 0
@@ -508,7 +519,7 @@ jobs:
         if: ${{ always() && steps.verify.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: hotdog-coloros-UNTESTED-recovery-image
+          name: hotdog-coloros-VERIFIED-UNTESTED-recovery-image
           path: |
             twrp-hotdog-coloros-12.1-UNTESTED.img
             twrp-hotdog-coloros-12.1-UNTESTED.img.sha256

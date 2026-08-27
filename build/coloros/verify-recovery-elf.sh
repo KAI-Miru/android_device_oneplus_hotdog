@@ -91,7 +91,7 @@ if grep -Fqx -- \
   'I:Oplus H.40 v4 hybrid activated; TWRP owns metadata mapping, OEM owns DE/CE' \
   "$all_strings"
 then
-  adapter_version=v4-hybrid
+  adapter_version=v5-hybrid
   check_string log_marker_activation \
     'I:Oplus H.40 v4 hybrid activated; TWRP owns metadata mapping, OEM owns DE/CE'
   check_string log_marker_cryptoeng_ready \
@@ -101,7 +101,7 @@ then
   check_string log_marker_de_bypass \
     'I:Oplus H.40 v4 preserving TWRP metadata mapping and bypassing generic DE/user discovery'
   check_string log_marker_fatal \
-    'E:Oplus H.40 v4 hybrid adapter entered process-lifetime fatal state: %s'
+    'E:Oplus H.40 v5 hybrid adapter entered process-lifetime fatal state: %s'
   check_string log_marker_metadata_failclosed \
     'E:Oplus H.40 v4 TWRP metadata mapping failed after runtime activation; refusing FDE fallback'
   check_string log_marker_handoff_failclosed \
@@ -131,7 +131,7 @@ check_string log_marker_active_unavailable \
 check_string log_marker_no_lock_success \
   'I:Oplus H.40 v3 no-lock user 0 CE postcondition satisfied'
 check_string log_marker_credential_success \
-  'I:Oplus H.40 v3 user 0 CE postcondition satisfied'
+  'I:[H40 V50 HANDOFF] modern user 0 CE postcondition satisfied'
 
 sha256sum "$recovery_elf" > "$report_dir/recovery-elf.sha256"
 sha256sum "$credential_helper_elf" \
