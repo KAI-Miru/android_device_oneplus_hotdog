@@ -1,0 +1,541 @@
+name: Hotdog TWRP 12.1 ColorOS
+
+on:
+  push:
+    branches:
+      - android-12.1-latest-snapshot
+    paths:
+      - ".github/workflows/build-recovery.yml"
+      - "build/coloros/**"
+      - "recovery/root/**"
+      - "BoardConfig.mk"
+      - "device.mk"
+      - "recovery.fstab"
+      - "twrp_hotdog.mk"
+      - "twrp.dependencies"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hotdog-coloros-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recovery-image:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    env:
+      MANIFEST_URL: https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git
+      MANIFEST_BRANCH: twrp-12.1
+      MANIFEST_REVISION: 6dc117d9cbd08430daa16db2013560e1c4017fa8
+      RECOVERY_REVISION: 5c3d206a5eeb3d446bcda8248a405a4b278bab5c
+      VOLD_REVISION: a164ba05c5fef288059774a776b2e6e1119957cf
+      SECURITY_REVISION: 14737db1429b8eebc15568bc748b2cd79ccad5c2
+      NATIVE_REVISION: 89c808424fbce9e40c0d4e0d1920b3c64a191b7f
+      QCOM_COMMON_REVISION: 2cf934339972feb6f711e5ad182b82157269c7f3
+      QCOM_TWRP_COMMON_REVISION: 98506f7919102378c8d52ee7d6a94a867f1b4c55
+      BUILD_MAKE_REVISION: 1b692e2248609f50a27c48cce53b7445cecdcfc5
+      BUILD_SOONG_REVISION: c6c059ab28c8c67921c0838a994bb70d53594aa7
+      VENDOR_TWRP_REVISION: 664ac3aa7a569d28d902734c741a629a59bab32d
+      SYSTEM_CORE_REVISION: ac4f36c7eb076ea2c582061a21dfc49eaa71e623
+      MKBOOTIMG_REVISION: b7c1a63df33e6763d2482bc9d33007f67706d131
+      HARDWARE_INTERFACES_REVISION: ae469cee0dce6d71489588126a15da8e67a50102
+      DEVICE_PATH: device/oneplus/hotdog
+      BUILD_TARGET: recoveryimage
+      RECOVERY_IMAGE_REL: out/target/product/hotdog/recovery.img
+      RECOVERY_PARTITION_SIZE: "100663296"
+      PREBUILT_KERNEL_SHA256: 5cce136f5ebcede8ac03ae896dc64dc160c30c9ead981ae52d586e3598f578be
+      PREBUILT_DTB_SHA256: 5fe452d09b59cf169662a0ec1f25a8d4ac9cd217852a28c8908a5b5c3860ad5a
+      PREBUILT_DTBO_SHA256: bd9640691f9d543204deb107e92de4f8ecf117e52d79b79cead8de031450d465
+      BUILD_JOBS: "4"
+      LC_ALL: C
+      TZ: UTC
+
+    steps:
+      - name: Free runner disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Install build prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            bc binutils bison build-essential ccache curl flex g++-multilib \
+            gcc-multilib git git-lfs gnupg gperf imagemagick \
+            lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev \
+            liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev \
+            libxml2 libxml2-utils lzop pngcrush python3 rsync schedtool \
+            squashfs-tools xsltproc zip zlib1g-dev
+          mkdir -p "$HOME/bin"
+          curl --fail --location --retry 3 \
+            https://storage.googleapis.com/git-repo-downloads/repo \
+            --output "$HOME/bin/repo"
+          chmod 0755 "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          git config --global user.name "TWRP CI"
+          git config --global user.email "twrp-ci@users.noreply.github.com"
+          sha256sum "$HOME/bin/repo" | tee "$GITHUB_WORKSPACE/repo-launcher.sha256"
+
+      - name: Sync pinned TWRP source
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/twrp"
+          cd "$RUNNER_TEMP/twrp"
+          "$HOME/bin/repo" init --depth=1 \
+            --manifest-url "$MANIFEST_URL" \
+            --manifest-branch "$MANIFEST_BRANCH"
+
+          manifest_actual="$(git -C .repo/manifests rev-parse HEAD)"
+          test "$manifest_actual" = "$MANIFEST_REVISION"
+
+          mkdir -p .repo/local_manifests
+          cat > .repo/local_manifests/hotdog.xml <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <extend-project name="android_bootable_recovery"
+                            path="bootable/recovery"
+                            revision="$RECOVERY_REVISION" />
+            <extend-project name="android_system_vold"
+                            path="system/vold"
+                            revision="$VOLD_REVISION" />
+            <extend-project name="android_system_security"
+                            path="system/security"
+                            revision="$SECURITY_REVISION" />
+            <extend-project name="platform/frameworks/native"
+                            path="frameworks/native"
+                            revision="$NATIVE_REVISION" />
+            <extend-project name="android_device_qcom_common"
+                            path="device/qcom/common"
+                            revision="$QCOM_COMMON_REVISION" />
+            <extend-project name="android_device_qcom_twrp-common"
+                            path="device/qcom/twrp-common"
+                            revision="$QCOM_TWRP_COMMON_REVISION" />
+            <extend-project name="android_build"
+                            path="build/make"
+                            revision="$BUILD_MAKE_REVISION" />
+            <extend-project name="android_build_soong"
+                            path="build/soong"
+                            revision="$BUILD_SOONG_REVISION" />
+            <extend-project name="android_vendor_twrp"
+                            path="vendor/twrp"
+                            revision="$VENDOR_TWRP_REVISION" />
+            <extend-project name="android_system_core"
+                            path="system/core"
+                            revision="$SYSTEM_CORE_REVISION" />
+            <extend-project name="platform/system/tools/mkbootimg"
+                            path="system/tools/mkbootimg"
+                            revision="$MKBOOTIMG_REVISION" />
+            <extend-project name="android_hardware_interfaces"
+                            path="hardware/interfaces"
+                            revision="$HARDWARE_INTERFACES_REVISION" />
+            <project path="$DEVICE_PATH"
+                     name="${GITHUB_REPOSITORY}"
+                     remote="github"
+                     revision="${GITHUB_SHA}"
+                     clone-depth="1" />
+          </manifest>
+          EOF
+
+          "$HOME/bin/repo" sync --force-sync --no-clone-bundle --no-tags \
+            --optimized-fetch --prune --fail-fast -j"$BUILD_JOBS"
+
+      - name: Apply reviewed ColorOS patch set
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/twrp"
+          patch_dir="$PWD/$DEVICE_PATH/build/coloros/patches"
+
+          (
+            cd "$patch_dir"
+            sha256sum --check <<'EOF'
+          bc1398b4901403a33d7ad80a171ba95974ba2c938558bc10b69ff350e8850895  binder.patch
+          29ef6a93de27f17dfb741cc3bf93eaf063cefacd739a8625e1c9b8e3f668156c  keystore-service.patch
+          be435c026ea0af8d979c71dde853f6920d68bab7a44a40a12b810e67da86a673  openaes.patch
+          bb813e0dc3cfb4f08894178c33d2c237a1636e5e81de93221acae27196c72087  recovery.patch
+          0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523  security.patch
+          452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364  task-profiles.patch
+          bf99fa1bcd3c9c73fd94d0a554898df9711332b2dea87e8566a01f6f740be394  vold.patch
+          EOF
+          ) | tee "$GITHUB_WORKSPACE/patch-checksums.txt"
+
+          apply_patch() {
+            local repository="$1"
+            local patch="$2"
+            git -C "$repository" apply --check --index --whitespace=error-all "$patch"
+            git -C "$repository" apply --index --whitespace=error-all "$patch"
+          }
+
+          apply_patch bootable/recovery "$patch_dir/openaes.patch"
+          apply_patch bootable/recovery "$patch_dir/recovery.patch"
+          apply_patch bootable/recovery "$patch_dir/keystore-service.patch"
+          apply_patch system/core "$patch_dir/task-profiles.patch"
+          apply_patch system/vold "$patch_dir/vold.patch"
+          apply_patch system/security "$patch_dir/security.patch"
+          apply_patch frameworks/native "$patch_dir/binder.patch"
+
+          for repository in \
+            bootable/recovery system/core system/vold system/security frameworks/native
+          do
+            git -C "$repository" diff --cached --check
+          done
+
+          expected_recovery_paths=$'Android.mk\netc/init/keystore2.rc\noplus_h40_credential_client.cpp\noplus_h40_credential_client.hpp\noplus_h40_credential_helper.cpp\noplus_h40_credential_protocol.hpp\noplus_h40_decrypt.cpp\noplus_h40_decrypt.hpp\npartitionmanager.cpp\nprebuilt/Android.mk'
+          test "$(git -C bootable/recovery diff --cached --name-only | LC_ALL=C sort)" = \
+            "$expected_recovery_paths"
+          test "$(git -C system/core diff --cached --name-only)" = \
+            'libprocessgroup/profiles/Android.bp'
+
+          grep -Fq '[H40 V51 PARENT]' bootable/recovery/partitionmanager.cpp
+          grep -Fq 'Decrypt_User_H40_Modern' system/vold/Decrypt.cpp
+          grep -Fq 'GetKeyUpgradeLock()' system/vold/KeyStorage.cpp
+          grep -Fq 'GetKeyDirsToCommit()' system/vold/KeyStorage.cpp
+          grep -Fq 'malformed pKMblob prefix' system/vold/Keymaster.cpp
+          grep -Fq 'H40_RECOVERY_KEYSTORE2_PERMISSION_SHIM_V51' \
+            system/security/keystore2/src/utils.rs
+          grep -Fq 'H40_RECOVERY_BINDER_STABILITY_V0_V52' \
+            frameworks/native/libs/binder/Parcel.cpp
+          grep -Fq '    disabled' bootable/recovery/etc/init/keystore2.rc
+          if grep -Fq 'on late-init' bootable/recovery/etc/init/keystore2.rc ||
+             grep -Fq 'static std::mutex key_upgrade_lock;' system/vold/KeyStorage.cpp ||
+             grep -Fq 'static std::vector<std::string> key_dirs_to_commit;' \
+               system/vold/KeyStorage.cpp ||
+             grep -Fq 'Using key directly' system/vold/Keymaster.cpp; then
+            echo "forbidden legacy or early-service path survived the patch set" >&2
+            exit 1
+          fi
+
+          for repository in \
+            bootable/recovery system/core system/vold system/security frameworks/native
+          do
+            echo "$repository:"
+            git -C "$repository" diff --cached --stat
+          done | tee "$GITHUB_WORKSPACE/patch-diffstat.txt"
+
+      - name: Verify source snapshot and Hotdog layout
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/twrp"
+          "$HOME/bin/repo" manifest -r -o "$GITHUB_WORKSPACE/twrp-snapshot.xml"
+
+          assert_revision() {
+            local path="$1"
+            local expected="$2"
+            test "$(git -C "$path" rev-parse HEAD)" = "$expected"
+          }
+
+          assert_revision bootable/recovery "$RECOVERY_REVISION"
+          assert_revision system/vold "$VOLD_REVISION"
+          assert_revision system/security "$SECURITY_REVISION"
+          assert_revision frameworks/native "$NATIVE_REVISION"
+          assert_revision device/qcom/common "$QCOM_COMMON_REVISION"
+          assert_revision device/qcom/twrp-common "$QCOM_TWRP_COMMON_REVISION"
+          assert_revision build/make "$BUILD_MAKE_REVISION"
+          assert_revision build/soong "$BUILD_SOONG_REVISION"
+          assert_revision vendor/twrp "$VENDOR_TWRP_REVISION"
+          assert_revision system/core "$SYSTEM_CORE_REVISION"
+          assert_revision system/tools/mkbootimg "$MKBOOTIMG_REVISION"
+          assert_revision hardware/interfaces "$HARDWARE_INTERFACES_REVISION"
+          assert_revision "$DEVICE_PATH" "$GITHUB_SHA"
+
+          printf '%s  %s\n' \
+            "$PREBUILT_KERNEL_SHA256" "$DEVICE_PATH/prebuilt/Image.gz" \
+            "$PREBUILT_DTB_SHA256" "$DEVICE_PATH/prebuilt/dtb.img" \
+            "$PREBUILT_DTBO_SHA256" "$DEVICE_PATH/prebuilt/dtbo.img" \
+            | sha256sum --check - \
+            | tee "$GITHUB_WORKSPACE/prebuilt-source-check.txt"
+
+          if grep -Eq '<project[^>]+path="kernel/oneplus/' \
+            "$GITHUB_WORKSPACE/twrp-snapshot.xml"; then
+            echo "unexpected OnePlus kernel source project in manifest" >&2
+            exit 1
+          fi
+
+          test "$(grep -Fc 'mkdir /tmp/misc' \
+            "$DEVICE_PATH/recovery/root/init.recovery.qcom.rc")" = 2
+          grep -Fq 'TW_INCLUDE_OPLUS_H40_DECRYPT := true' \
+            "$DEVICE_PATH/BoardConfig.mk"
+          test ! -e "$DEVICE_PATH/recovery/root/system/etc/task_profiles.json"
+          sh -n "$DEVICE_PATH/recovery/root/system/bin/unified-script.sh"
+          git -C "$DEVICE_PATH" diff --check
+
+          {
+            echo "workflow_repository=${GITHUB_REPOSITORY}"
+            echo "workflow_revision=${GITHUB_SHA}"
+            echo "manifest=$MANIFEST_REVISION"
+            echo "recovery=$RECOVERY_REVISION"
+            echo "vold=$VOLD_REVISION"
+            echo "security=$SECURITY_REVISION"
+            echo "frameworks_native=$NATIVE_REVISION"
+            echo "system_core=$SYSTEM_CORE_REVISION"
+            echo "build_target=$BUILD_TARGET"
+            echo "partition_model=dynamic-ab-dedicated-recovery"
+            echo "kernel_source_project_synced=false"
+            sha256sum "$DEVICE_PATH/build/coloros/patches/"*.patch
+          } | tee "$GITHUB_WORKSPACE/build-provenance.txt"
+
+      - name: Configure and assert Hotdog build
+        run: |
+          set -eo pipefail
+          cd "$RUNNER_TEMP/twrp"
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export BUILD_USERNAME=KAI-Miru
+          export BUILD_HOSTNAME=github-actions
+          source build/envsetup.sh
+          lunch twrp_hotdog-eng
+
+          assert_eq() {
+            local name="$1"
+            local expected="$2"
+            local actual
+            actual="$(get_build_var "$name")"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "Expected $name=$expected, got '$actual'" >&2
+              exit 1
+            fi
+          }
+
+          assert_eq TARGET_PRODUCT twrp_hotdog
+          assert_eq TARGET_DEVICE hotdog
+          assert_eq TARGET_NO_KERNEL false
+          assert_eq TARGET_NO_RECOVERY false
+          assert_eq BOARD_USES_RECOVERY_AS_BOOT ""
+          assert_eq TW_HAS_RECOVERY_PARTITION true
+          assert_eq PRODUCT_USE_DYNAMIC_PARTITIONS true
+          assert_eq PRODUCT_BUILD_SUPER_PARTITION false
+          assert_eq BOARD_BOOT_HEADER_VERSION 2
+          assert_eq BOARD_INCLUDE_RECOVERY_DTBO true
+          assert_eq BOARD_RECOVERYIMAGE_PARTITION_SIZE "$RECOVERY_PARTITION_SIZE"
+          assert_eq BOARD_SUPER_PARTITION_SIZE 15032385536
+          assert_eq TW_INCLUDE_OPLUS_H40_DECRYPT true
+          assert_eq TW_EXCLUDE_ENCRYPTED_BACKUPS true
+          assert_eq TW_EXTRA_LANGUAGES true
+
+          {
+            for name in \
+              TARGET_PRODUCT TARGET_DEVICE TARGET_ARCH PLATFORM_VERSION \
+              TARGET_NO_KERNEL TARGET_NO_RECOVERY BOARD_USES_RECOVERY_AS_BOOT \
+              TW_HAS_RECOVERY_PARTITION PRODUCT_USE_DYNAMIC_PARTITIONS \
+              PRODUCT_BUILD_SUPER_PARTITION BOARD_SUPER_PARTITION_SIZE \
+              BOARD_BOOT_HEADER_VERSION BOARD_INCLUDE_RECOVERY_DTBO \
+              BOARD_RECOVERYIMAGE_PARTITION_SIZE TW_INCLUDE_OPLUS_H40_DECRYPT \
+              TW_EXCLUDE_ENCRYPTED_BACKUPS TW_EXTRA_LANGUAGES \
+              TARGET_PREBUILT_KERNEL TARGET_PREBUILT_DTB BOARD_PREBUILT_DTBOIMAGE
+            do
+              printf '%s=%s\n' "$name" "$(get_build_var "$name")"
+            done
+          } | tee "$GITHUB_WORKSPACE/build-configuration.txt"
+
+      - name: Build dedicated recovery image
+        id: build
+        run: |
+          set -eo pipefail
+          cd "$RUNNER_TEMP/twrp"
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export BUILD_USERNAME=KAI-Miru
+          export BUILD_HOSTNAME=github-actions
+          source build/envsetup.sh
+          lunch twrp_hotdog-eng
+          mka "$BUILD_TARGET" -j"$BUILD_JOBS" 2>&1 \
+            | tee "$GITHUB_WORKSPACE/build.log"
+
+      # Keep this directly after compilation. Later validation failures must
+      # never hide a successfully linked recovery image or adapter binaries.
+      - name: Stage compiled payload failsafe
+        id: compiled_failsafe
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          product_root="$RUNNER_TEMP/twrp/out/target/product/hotdog"
+          recovery_root="$product_root/recovery/root"
+          destination="$RUNNER_TEMP/hotdog-coloros-compiled-payload"
+          mkdir -p "$destination/system/bin" "$destination/system/lib64"
+          install -m 0644 "$product_root/recovery.img" "$destination/recovery.img"
+          for name in recovery oplus_h40_credential_helper keystore2 linker64; do
+            if test -f "$recovery_root/system/bin/$name"; then
+              install -m 0755 "$recovery_root/system/bin/$name" \
+                "$destination/system/bin/$name"
+            fi
+          done
+          for name in libbinder.so libbinder_ndk.so; do
+            if test -f "$recovery_root/system/lib64/$name"; then
+              install -m 0644 "$recovery_root/system/lib64/$name" \
+                "$destination/system/lib64/$name"
+            fi
+          done
+          (
+            cd "$destination"
+            find . -type f -print0 | LC_ALL=C sort -z \
+              | xargs -0 sha256sum > SHA256SUMS
+          )
+
+      - name: Upload compiled payload failsafe
+        if: ${{ always() && steps.compiled_failsafe.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hotdog-coloros-compiled-payload
+          path: ${{ runner.temp }}/hotdog-coloros-compiled-payload/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Verify adapter and recovery image
+        id: verify
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/twrp"
+          product_root="out/target/product/hotdog"
+          recovery_root="$product_root/recovery/root"
+          recovery_image="$product_root/recovery.img"
+          report="$GITHUB_WORKSPACE/elf-report"
+          installed_task_profiles="$recovery_root/system/etc/task_profiles.json"
+
+          for required in \
+            "$recovery_image" \
+            "$recovery_root/system/bin/recovery" \
+            "$recovery_root/system/bin/oplus_h40_credential_helper" \
+            "$recovery_root/system/bin/keystore2" \
+            "$recovery_root/system/lib64/libbinder.so" \
+            "$recovery_root/system/bin/qseecomd" \
+            "$recovery_root/system/bin/android.hardware.keymaster@4.0-service-qti" \
+            "$recovery_root/system/bin/android.hardware.gatekeeper@1.0-service-qti" \
+            "$recovery_root/init.recovery.qcom_decrypt.rc" \
+            "$recovery_root/init.recovery.qcom_decrypt.fbe.rc" \
+            "$recovery_root/system/etc/init/keystore2.rc" \
+            "$recovery_root/twres/splash.xml" \
+            "$recovery_root/twres/images/mirumiru.png" \
+            "$installed_task_profiles"
+          do
+            test -s "$required"
+          done
+
+          cmp system/core/libprocessgroup/profiles/task_profiles.json \
+            "$installed_task_profiles"
+          grep -Fq '    disabled' "$recovery_root/system/etc/init/keystore2.rc"
+          if grep -Fq 'on late-init' "$recovery_root/system/etc/init/keystore2.rc"; then
+            echo "keystore2 retained an unsafe early automatic start" >&2
+            exit 1
+          fi
+          grep -Fq 'mkdir /tmp/misc/keystore/' \
+            "$recovery_root/init.recovery.qcom.rc"
+          cmp "$DEVICE_PATH/recovery/root/twres/splash.xml" \
+            "$recovery_root/twres/splash.xml"
+          cmp "$DEVICE_PATH/recovery/root/twres/images/mirumiru.png" \
+            "$recovery_root/twres/images/mirumiru.png"
+          for marker in \
+            '<image resource="mirumiru"/>' \
+            '<text>TWRP %tw_version%</text>' \
+            'Latest upstream 12.1 snapshot - 2025-09-02' \
+            'Unofficial ColorOS Edition' \
+            'OnePlus 7T Series - Hotdog Family'; do
+            grep -Fq "$marker" "$recovery_root/twres/splash.xml"
+          done
+
+          bash "$DEVICE_PATH/build/coloros/verify-recovery-elf.sh" \
+            "$recovery_root/system/bin/recovery" "$report"
+          readelf --program-headers --wide \
+            "$recovery_root/system/bin/oplus_h40_credential_helper" \
+            > "$report/credential-helper.program-headers"
+          strings -a "$recovery_root/system/bin/recovery" > "$report/recovery.strings"
+          strings -a "$recovery_root/system/bin/keystore2" > "$report/keystore2.strings"
+          strings -a "$recovery_root/system/lib64/libbinder.so" \
+            > "$report/libbinder.strings"
+
+          grep -Fq '[H40 V51 PARENT]' "$report/recovery.strings"
+          grep -Fq 'H40_RECOVERY_KEYSTORE2_PERMISSION_SHIM_V51' \
+            "$report/keystore2.strings"
+          grep -Fq 'H40_RECOVERY_BINDER_STABILITY_V0_V52' \
+            "$report/libbinder.strings"
+          grep -Fq 'Requesting program interpreter: /system/bin/linker64' \
+            "$report/credential-helper.program-headers"
+          if grep -Fq 'Using key directly' "$report/recovery.strings" ||
+             grep -Fq 'Trying %s wrappedkey' "$report/recovery.strings"; then
+            echo "unsafe key fallback is present in the final recovery ELF" >&2
+            exit 1
+          fi
+
+          bash "$DEVICE_PATH/build/coloros/verify-hotdog-recovery-image.sh" \
+            "$RUNNER_TEMP/twrp" \
+            "$recovery_image" \
+            "$DEVICE_PATH/prebuilt/Image.gz" \
+            "$DEVICE_PATH/prebuilt/dtb.img" \
+            "$DEVICE_PATH/prebuilt/dtbo.img" \
+            "$RECOVERY_PARTITION_SIZE" \
+            "$GITHUB_WORKSPACE"
+
+          oem_library="$recovery_root/system/lib64/libdecrypt_recovery.so"
+          if test -s "$oem_library" &&
+             grep -RFl 'service hal_cryptoeng_oplus' "$recovery_root" \
+               > "$GITHUB_WORKSPACE/cryptoeng-init-files.txt"; then
+            echo 'candidate: OEM decrypt library and cryptoeng init service are packaged' \
+              | tee "$GITHUB_WORKSPACE/coloros-runtime-readiness.txt"
+          else
+            echo 'blocked: exact Hotdog ColorOS OEM decrypt/cryptoeng closure is not packaged' \
+              | tee "$GITHUB_WORKSPACE/coloros-runtime-readiness.txt"
+            : > "$GITHUB_WORKSPACE/cryptoeng-init-files.txt"
+          fi
+
+          cp "$recovery_image" \
+            "$GITHUB_WORKSPACE/twrp-hotdog-coloros-12.1-UNTESTED.img"
+          sha256sum "$GITHUB_WORKSPACE/twrp-hotdog-coloros-12.1-UNTESTED.img" \
+            | tee "$GITHUB_WORKSPACE/twrp-hotdog-coloros-12.1-UNTESTED.img.sha256"
+          cat > "$GITHUB_WORKSPACE/UNTESTED.txt" <<'EOF'
+          UNTESTED HOTDOG COLOROS ADAPTER BUILD
+
+          This image passed pinned-source compilation, adapter-marker, ELF, and
+          dedicated-recovery layout checks. It has not proven boot, display,
+          touch, mounts, decryption, fastbootd, slot handling, or safe flashing.
+          The exact Hotdog ColorOS OEM decrypt/cryptoeng closure is a separate
+          runtime gate recorded in coloros-runtime-readiness.txt.
+
+          Do not flash it from this CI result alone.
+          EOF
+
+      - name: Upload verified untested recovery image
+        if: ${{ always() && steps.verify.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hotdog-coloros-UNTESTED-recovery-image
+          path: |
+            twrp-hotdog-coloros-12.1-UNTESTED.img
+            twrp-hotdog-coloros-12.1-UNTESTED.img.sha256
+            coloros-runtime-readiness.txt
+            UNTESTED.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hotdog-coloros-build-diagnostics
+          path: |
+            repo-launcher.sha256
+            twrp-snapshot.xml
+            patch-checksums.txt
+            patch-diffstat.txt
+            build-provenance.txt
+            build-configuration.txt
+            prebuilt-source-check.txt
+            build.log
+            recovery-unpack-info.txt
+            recovery-component-sha256.txt
+            recovery-image-layout.txt
+            recovery-image.sha256
+            coloros-runtime-readiness.txt
+            cryptoeng-init-files.txt
+            elf-report/
+          if-no-files-found: warn
+          retention-days: 14

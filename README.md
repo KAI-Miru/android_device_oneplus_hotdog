@@ -8,22 +8,30 @@ Proceed at your own risk.
 Initial build which boots on OOS11 for 7T / Pro.
 Decryption on OOS11 does not work. Might work on custom that uses OOS11 blobs.
 
-## Android 12.1 test branch
+## Android 12.1 ColorOS branch
 
-The `codex/hotdog-a12-minimal` branch is a compile-only port to a guarded TWRP
-12.1 source set. Its GitHub Actions workflow pins the manifest revision and the
-critical source projects, records the complete resolved manifest, and builds
-the dedicated `recoveryimage` target from the preserved prebuilt kernel, DTB,
-and recovery-DTBO. It is only partially pinned, not a complete 253-project
-lockfile. The minimal manifest omits CTS/VTS-only defaults, so the normal TWRP
-missing-dependency mode is enabled while critical recovery files and image
-components are checked explicitly.
+`android-12.1-latest-snapshot` is the maintained TWRP 12.1 branch. It preserves
+Hotdog's dynamic A/B logical partitions and dedicated, slotted recovery image;
+it does not use Guacamole's static-A/B recovery-as-boot packaging.
 
-Any Actions image is **untested**. Do not flash it based on a green build alone.
-The current kernel lacks EROFS support, and ColorOS 12 encryption, proprietary
-HAL compatibility, partition metadata, slot control, display, touch, and boot
-remain device-test gates. See [PORT-NOTES.md](PORT-NOTES.md) for the exact scope
-and fingerprints.
+The branch ports the reviewed Guacamole ColorOS 12 decryption source adapter,
+including the final parent-KeyStorage, malformed-`pKMblob`, Keystore2 recovery
+permission, and Binder stability fixes. Hotdog uses its TWRP-built Keystore2
+directly, with a disabled credential-time service and an init-created temporary
+database directory. The Guacamole hybrid-ramdisk private-runtime packager is
+not used.
+
+GitHub Actions pins the manifest and critical source projects, verifies every
+patch checksum and safety marker, builds `recoveryimage`, uploads a compiled
+payload immediately after a successful link, and then audits the final image,
+ELFs, prebuilt kernel/DTB/recovery-DTBO, custom MiruMira splash, and partition
+size.
+
+Any Actions image is **untested**. The exact Hotdog ColorOS OEM decrypt library,
+cryptoeng service, dependency closure, and VINTF material have not been imported
+from target firmware, so a green compile is not proof of working decryption.
+The current kernel also lacks EROFS support. See [PORT-NOTES.md](PORT-NOTES.md)
+and [build/coloros/README.md](build/coloros/README.md) for the precise boundary.
 
 #### Legacy Android 11 status
 - [X] Flashing ROMs (AOSP and OOS)

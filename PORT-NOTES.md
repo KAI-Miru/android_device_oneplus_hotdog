@@ -1,11 +1,12 @@
-# hotdog Android 12.1 minimal port notes
+# Hotdog Android 12.1 ColorOS port notes
 
 ## Scope
 
-This working tree starts from `KAI-Miru/android_device_oneplus_hotdog` commit
-`55d7d4e2eadcbb3cc712cca069c03876273582d5` (`android-11`). It is a conservative
-source uplift for a current TWRP Android 12.1 build check. It is **not** a
-ColorOS 12-ready recovery and it contains no new device binaries.
+The Android 12.1 baseline was proven by Hotdog Actions run `32399278297` at
+commit `bdab24f6bdfa8db19016ac90789ba4995c95cf84`. This branch adds the reviewed
+Guacamole ColorOS 12 decryption source adapter while retaining that baseline's
+device layout. It contains no new proprietary device binaries and is not yet a
+runtime-proven ColorOS recovery.
 
 The port deliberately preserves hotdog's device-specific packaging:
 
@@ -16,8 +17,33 @@ The port deliberately preserves hotdog's device-specific packaging:
   `BOARD_RECOVERYIMAGE_PARTITION_SIZE`, and `TW_HAS_RECOVERY_PARTITION`);
 - the existing super size, dynamic group, partition list, fstab, and TWRP flags.
 
-It does not copy guacamole's static-A/B, recovery-as-boot, kernel, DTB, DTBO,
-fstab, or partition sizes.
+It does not copy Guacamole's static-A/B, recovery-as-boot, kernel, DTB, DTBO,
+fstab, partition sizes, stock H.40 ramdisk, or hybrid private-runtime package.
+
+## ColorOS adapter port
+
+- The final reviewed Guacamole recovery, vold, system/security, and
+  frameworks/native patches are applied byte-for-byte to the same pinned TWRP
+  project revisions.
+- Hotdog compiles the adapter through `TW_INCLUDE_OPLUS_H40_DECRYPT := true`.
+  The internal H.40 marker names remain unchanged so provenance and fail-closed
+  ELF checks stay comparable with the device-tested Guacamole implementation.
+- The final KeyStorage state is process-owned through accessors; no duplicated
+  namespace globals remain. Malformed `pKMblob` prefixes are rejected rather
+  than falling through to an unsafe raw-key path.
+- Keystore2's recovery permission shim and the SDK-30 Binder stability bridge
+  are included. The dedicated recovery image uses its own patched TWRP
+  Keystore2/libbinder namespace, so Guacamole's stock-ramdisk isolation
+  packager is neither required nor appropriate.
+- The normal `late-init` Keystore2 start is removed. The service is disabled
+  and started by the adapter only at credential time; device init creates
+  `/tmp/misc/keystore` beforehand.
+- The custom MiruMira splash is included with Hotdog-family identification.
+  Existing `TW_EXTRA_LANGUAGES := true` support is retained without a separate
+  language transplant.
+- The source port still lacks the exact Hotdog ColorOS OEM decrypt library,
+  cryptoeng service, dependency closure, and matching init/VINTF files. CI
+  records that as a runtime gate without hiding a successful source build.
 
 ## Source-safe Android 12.1 changes
 

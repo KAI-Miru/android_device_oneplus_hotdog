@@ -37,6 +37,11 @@ service unified-script /system/bin/unified-script.sh
 on init
     write /sys/class/backlight/panel0-backlight/brightness 200
 
+    # TWRP's recovery-domain keystore2 stores its temporary database here.
+    # The ColorOS adapter starts the disabled service only at credential time.
+    mkdir /tmp/misc
+    mkdir /tmp/misc/keystore/
+
     # Create location for fs_mgr to store abbreviated output from filesystem
     # checker programs.
     mkdir /dev/fscklogs 0770 root system
