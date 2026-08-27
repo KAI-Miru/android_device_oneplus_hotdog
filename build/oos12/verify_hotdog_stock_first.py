@@ -130,6 +130,11 @@ def main() -> None:
 
     sys.path.insert(0, str(args.module_dir.resolve()))
     import newc  # noqa: PLC0415
+    from make_hotdog_stock_overlay import (  # noqa: PLC0415
+        STOCK_CREDENTIAL_HELPER,
+        STOCK_INTERPRETER,
+        elf_interpreter,
+    )
     from repack_boot_v2 import AVB_FOOTER_MAGIC, parse_boot_v2  # noqa: PLC0415
 
     stock = parse_boot_v2(args.stock_recovery)
@@ -238,7 +243,6 @@ def main() -> None:
     required_private = (
         "system/tw/bin/recovery",
         "system/tw/bin/keystore2",
-        "system/tw/bin/oplus_h40_credential_helper",
         "system/tw/bin/keystore_cli_v2",
         "system/tw/lib64/libbinder.so",
         "system/tw/lib64/libdecrypt_recovery.so",
@@ -268,8 +272,22 @@ def main() -> None:
     require(dlopen.get("dt_needed_closure_count") == len(dlopen.get("dependency_targets", [])), "decrypt closure count mismatch")
 
     require_marker(require_data(final_index, "system/tw/bin/recovery"), b"[H40 V51 PARENT]", "ColorOS adapter marker")
+    credential_helper = require_data(final_index, STOCK_CREDENTIAL_HELPER)
+    require(credential_helper[:4] == b"\x7fELF", "stock credential helper is not ELF")
+    require(
+        elf_interpreter(credential_helper) == STOCK_INTERPRETER,
+        "credential helper was relocated out of the stock OOS12 linker namespace",
+    )
+    require(
+        final_index[STOCK_CREDENTIAL_HELPER].mode & 0o111 != 0,
+        "stock credential helper is not executable",
+    )
+    require(
+        "system/tw/bin/oplus_h40_credential_helper" not in final_index,
+        "credential helper was also copied into the private TWRP runtime",
+    )
     require_marker(
-        require_data(final_index, "system/tw/bin/oplus_h40_credential_helper"),
+        credential_helper,
         b"_Z21OplusCredentialVerifyNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEEi",
         "Oplus credential ABI",
     )
@@ -373,6 +391,7 @@ def main() -> None:
             "stock_recovery_vintf_and_crypto_sentinels_exact": True,
             "private_twrp_manifest_exact": True,
             "private_elf_dependency_closure_complete": True,
+            "credential_helper_uses_stock_oos12_namespace": True,
             "oplus_decrypt_and_keystore_markers_present": True,
             "commondcs_dependency_present_and_abi_matched": True,
             "dynamic_ab_fstab_and_recovery_partition_present": True,

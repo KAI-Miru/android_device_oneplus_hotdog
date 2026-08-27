@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import struct
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -39,6 +40,9 @@ LOGICAL_ROWS = (
     ("my_engineering", "/my_engineering", ("ext4",)),
 )
 
+STOCK_CREDENTIAL_HELPER = "system/bin/oplus_h40_credential_helper"
+STOCK_INTERPRETER = "/system/bin/linker64"
+
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -49,6 +53,42 @@ def decode(relative: str, data: bytes) -> str:
         return data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise SystemExit(f"expected UTF-8 text in {relative}") from exc
+
+
+def elf_interpreter(blob: bytes) -> str:
+    """Return the sole PT_INTERP path from an ELF executable."""
+
+    if blob[:4] != b"\x7fELF":
+        raise ValueError("entry is not ELF")
+    elf_class, encoding = blob[4], blob[5]
+    if elf_class not in (1, 2) or encoding not in (1, 2):
+        raise ValueError("unsupported ELF class or byte order")
+    endian = "<" if encoding == 1 else ">"
+    if elf_class == 2:
+        header = struct.unpack_from(endian + "HHIQQQIHHHHHH", blob, 16)
+        phoff, phentsize, phnum = header[4], header[8], header[9]
+        ph_format = endian + "IIQQQQQQ"
+    else:
+        header = struct.unpack_from(endian + "HHIIIIIHHHHHH", blob, 16)
+        phoff, phentsize, phnum = header[4], header[8], header[9]
+        ph_format = endian + "IIIIIIII"
+
+    matches = []
+    for number in range(phnum):
+        values = struct.unpack_from(ph_format, blob, phoff + number * phentsize)
+        if values[0] != 3:  # PT_INTERP
+            continue
+        if elf_class == 2:
+            offset, size = values[2], values[5]
+        else:
+            offset, size = values[1], values[4]
+        segment = blob[offset : offset + size]
+        if len(segment) != size:
+            raise ValueError("truncated PT_INTERP segment")
+        matches.append(segment.split(b"\0", 1)[0].decode("ascii"))
+    if len(matches) != 1:
+        raise ValueError(f"expected exactly one PT_INTERP segment, found {len(matches)}")
+    return matches[0]
 
 
 def patch_init(text: str) -> str:
@@ -249,6 +289,10 @@ def main() -> None:
         "system/etc/selinux/plat_keystore2_key_contexts": (
             "system/etc/selinux/plat_keystore2_key_contexts"
         ),
+        # This helper deliberately belongs to the preserved stock namespace.
+        # The parent adapter proves its mappings before sending a credential;
+        # relocating it under /system/tw makes that fail closed.
+        STOCK_CREDENTIAL_HELPER: STOCK_CREDENTIAL_HELPER,
     }
     next_ino = max(entry.ino for entry in stock_entries) + 1
     for target_name, source_name in additions.items():
@@ -257,18 +301,35 @@ def main() -> None:
         source = twrp.get(source_name)
         if source is None:
             raise SystemExit(f"TWRP source is missing planned asset: {source_name}")
+        if target_name == STOCK_CREDENTIAL_HELPER:
+            if source.mode & 0o170000 != 0o100000 or source.mode & 0o111 == 0:
+                raise SystemExit("credential helper is not a regular executable")
+            try:
+                interpreter = elf_interpreter(source.data)
+            except (UnicodeDecodeError, ValueError, struct.error) as exc:
+                raise SystemExit(f"cannot validate credential-helper PT_INTERP: {exc}") from exc
+            if interpreter != STOCK_INTERPRETER:
+                raise SystemExit(
+                    f"credential helper uses {interpreter!r}, expected {STOCK_INTERPRETER!r}"
+                )
         added = replace(source, name=target_name, ino=next_ino)
         next_ino += 1
         overlay.append(added)
-        records.append(
-            {
-                "kind": "addition",
-                "source": source_name,
-                "target": target_name,
-                "target_sha256": sha256(added.data),
-                "target_bytes": len(added.data),
-            }
-        )
+        record = {
+            "kind": "addition",
+            "source": source_name,
+            "target": target_name,
+            "target_sha256": sha256(added.data),
+            "target_bytes": len(added.data),
+        }
+        if target_name == STOCK_CREDENTIAL_HELPER:
+            record.update(
+                {
+                    "runtime": "stock_oos12",
+                    "interpreter": STOCK_INTERPRETER,
+                }
+            )
+        records.append(record)
 
     keystore_rc_name = "system/etc/init/keystore2.rc"
     if keystore_rc_name in stock:

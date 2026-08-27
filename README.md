@@ -35,6 +35,10 @@ valid system identity is available.
 
 The private runtime includes the exact recursive `DT_NEEDED` closure for TWRP
 and the five stock Oplus decrypt libraries selected by the pinned manifest.
+The isolated credential helper is the deliberate exception: it stays at
+`/system/bin` with its original interpreter so the OEM verifier loads the
+preserved OOS12 `libc++`, `libcrypto`, and decrypt library instead of TWRP's
+private copies. The final verifier rejects a relocated or wrapped helper.
 The stock cryptoeng service's missing CommonDCS dependency is taken from the
 matching Hotdog OOS12 ODM image and checked at both the SONAME/symbol and hash
 levels.

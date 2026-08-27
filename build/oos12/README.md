@@ -9,7 +9,8 @@ canonical invocation and pins every source input.
 - `extract_boot_ramdisk.py`, `newc.py`, and `extract_newc_regulars.py` parse the
   boot/CPIO inputs without losing archive metadata.
 - `make_hotdog_stock_overlay.py` makes only the audited stock-side routing,
-  fstab, context, property, and Keystore2 changes.
+  fstab, context, property, and Keystore2 changes, and installs the credential
+  helper unchanged in `/system/bin` so it uses the stock OOS12 namespace.
 - `make_private_twrp_overlay.py`, `h40_dlopen.py`, and `elf_audit.py` package
   the isolated TWRP runtime and prove its ELF/`dlopen` dependency closure.
 - `make_hotdog_cryptoeng_overlay.py` verifies and installs the exact Hotdog
