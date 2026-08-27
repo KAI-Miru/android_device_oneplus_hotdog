@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "device_family": "hotdog",
+  "firmware": {
+    "android_version": "12",
+    "build_fingerprint": "qti/msmnile/msmnile:12/SKQ1.210216.001/1676623833591:user/release-keys",
+    "security_patch": "2022-12-05"
+  },
+  "source_stock_recovery_bytes": 100663296,
+  "source_stock_recovery_sha256": "3a776605346aca4e5e98f588e72a68cd38f8f01c782f573ff3efd26b93389916",
+  "stock_boot_payload_bytes": 77979648,
+  "stock_boot_payload_sha256": "c4c38d24caebf0e7d64754b0f5ac58651496a85359dda0e4ba327385998d7790",
+  "stock_ramdisk_raw_bytes": 58282496,
+  "stock_ramdisk_raw_sha256": "7fe6263a5cc654b363ef010a3b140ea404393dbf992ca0580156357d6e7c46d0",
+  "stock_ramdisk_entries": 711,
+  "files": {
+    "dtb.img": {
+      "bytes": 12168729,
+      "sha256": "558825c788f86b64927ca1c254db8876d4d54a27d067db3ba8b53f1543a28618"
+    },
+    "kernel": {
+      "bytes": 40142864,
+      "sha256": "4b435ff44ed87d45a334f071d0af59f8579e8d0ac70ddd1bc4cdbf8ac39b2d6a"
+    },
+    "odm/lib64/vendor.oplus.hardware.commondcs@1.0.so": {
+      "bytes": 76160,
+      "sha256": "b626c790281f66279136437ca7065b5c0318462407c11c2a6ec2af04dc35e5a6",
+      "source_odm_bytes": 151891968,
+      "source_odm_sha256": "aac4c35f172358a42b2433a2197359ed224a2cb75a857c505ee79c615e0846c7"
+    },
+    "ramdisk-stock.cpio.gz": {
+      "bytes": 20489437,
+      "sha256": "97449f9d692985bd44305bd23fe59db34a3d26711d6aea25f4dc4b8398546aed"
+    },
+    "recovery-dtbo.img": {
+      "bytes": 5165936,
+      "sha256": "7187d1e64e79b1a9416b1fb332ef8d670cc59ad6dcacc6864db2ed2eec0fd5b7"
+    },
+    "recovery-header-v2.bin": {
+      "bytes": 4096,
+      "sha256": "3f4256d8f60657faf59014ee4e423622842649aa71650aea7edd8169bf53c6a3"
+    }
+  },
+  "source_avb": {
+    "algorithm": "SHA256_RSA4096",
+    "footer_version": "1.0",
+    "rollback_index": 1,
+    "salt": "a4c2ab49d2e1d3f7bc804867c5bfb9e4730bebe18c9be9db732b9afc4eded952"
+  }
+}

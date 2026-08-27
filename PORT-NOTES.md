@@ -1,183 +1,71 @@
-# Hotdog Android 12.1 ColorOS port notes
+# Hotdog OxygenOS 12 stock-first port notes
 
-## Scope
+## Why the repository changed
 
-The Android 12.1 baseline was proven by Hotdog Actions run `32399278297` at
-commit `bdab24f6bdfa8db19016ac90789ba4995c95cf84`. This branch adds the reviewed
-Guacamole ColorOS 12 decryption source adapter while retaining that baseline's
-device layout. It contains no new proprietary device binaries and is not yet a
-runtime-proven ColorOS recovery.
+The previous Android 12.1 source port still packaged a 2021 OxygenOS 11
+kernel, DTB, recovery-DTBO, and device-root proprietary set. Replacing only
+the TWRP recovery executable could not make that boot foundation compatible
+with OxygenOS/ColorOS 12 and led to Qualcomm CrashDump on target firmware.
 
-The port deliberately preserves hotdog's device-specific packaging:
+The obsolete components have been removed. The branch now checks in the exact
+OOS12 boot-v2 components and stock ramdisk used by the locally verified
+stock-first image. The final artifact is assembled in CI rather than requiring
+a second local repack.
 
-- dynamic A/B logical partitions in `super`;
-- boot image header version 2 and the existing offsets;
-- prebuilt `Image.gz`, separate DTB, and separate recovery-DTBO;
-- a dedicated, slotted recovery partition (`TARGET_NO_RECOVERY := false`,
-  `BOARD_RECOVERYIMAGE_PARTITION_SIZE`, and `TW_HAS_RECOVERY_PARTITION`);
-- the existing super size, dynamic group, partition list, fstab, and TWRP flags.
+## Preserved Hotdog layout
 
-It does not copy Guacamole's static-A/B, recovery-as-boot, kernel, DTB, DTBO,
-fstab, partition sizes, stock H.40 ramdisk, or hybrid private-runtime package.
+- dynamic A/B logical partitions with `slotselect`;
+- a dedicated, slotted `recovery` partition;
+- Android boot header version 2 with 4096-byte pages;
+- a 100,663,296-byte recovery partition;
+- separate stock OOS12 kernel, recovery-DTBO, and DTB components;
+- device identities for the 7T, 7T Pro, and 7T Pro 5G family.
 
-## ColorOS adapter port
+This deliberately does not copy Guacamole's static-A/B recovery-as-boot
+packaging. Only the reviewed ColorOS source adapter and generic private-runtime
+builder are shared concepts.
 
-- The final reviewed Guacamole recovery, vold, system/security, and
-  frameworks/native patches are applied byte-for-byte to the same pinned TWRP
-  project revisions.
-- Hotdog compiles the adapter through `TW_INCLUDE_OPLUS_H40_DECRYPT := true`.
-  The internal H.40 marker names remain unchanged so provenance and fail-closed
-  ELF checks stay comparable with the device-tested Guacamole implementation.
-- The final KeyStorage state is process-owned through accessors; no duplicated
-  namespace globals remain. Malformed `pKMblob` prefixes are rejected rather
-  than falling through to an unsafe raw-key path.
-- Keystore2's recovery permission shim and the SDK-30 Binder stability bridge
-  are included. The dedicated recovery image uses its own patched TWRP
-  Keystore2/libbinder namespace, so Guacamole's stock-ramdisk isolation
-  packager is neither required nor appropriate.
-- The normal `late-init` Keystore2 start is removed. The service is disabled
-  and started by the adapter only at credential time; device init creates
-  `/tmp/misc/keystore` beforehand.
-- The custom MiruMira splash is included with Hotdog-family identification.
-  Existing `TW_EXTRA_LANGUAGES := true` support is retained without a separate
-  language transplant.
-- The source port still lacks the exact Hotdog ColorOS OEM decrypt library,
-  cryptoeng service, dependency closure, and matching init/VINTF files. CI
-  records that as a runtime gate without hiding a successful source build.
+## Stock-first construction
 
-## Source-safe Android 12.1 changes
+CI reconstructs the exact OOS12 recovery boot payload from the files described
+by `prebuilt/oos12/manifest.json`. It decompresses the stock and compiled TWRP
+ramdisks without a filesystem round trip, then builds three deterministic
+newc overlays:
 
-- Both Qualcomm device dependencies now select `android-12.1`.
-- Recovery compatibility defaults use `PLATFORM_VERSION := 99.87.36` and set
-  `PLATFORM_VERSION_LAST_STABLE`. These are build/decrypt compatibility values,
-  not a claim about the installed phone OS.
-- `qcom_decrypt` and `qcom_decrypt_fbe` are packaged for every build variant,
-  rather than only `eng`.
-- Android 11 ashmem modules, relink requests, and `ashmemd.rc` are removed.
-  The obsolete HIDL-base and `libpcrecpp` relink requests are also removed;
-  `libcap`, `libion`, and `libxml2` remain.
-- The old boot-HAL wrapper requests and manual `libandroidicu` output-tree copy
-  are removed. The remaining boot 1.0 service/implementation set matches the
-  service started by device init; current TWRP packages health 2.1, which init
-  starts as `health-hal-2-1`.
-- Fastbootd uses `android.hardware.fastboot@1.1-impl-mock`, and the product
-  explicitly builds a recovery image with shipping API level 29 (hotdog
-  launched on Android 10). It keeps dynamic-partition support but explicitly
-  disables constructing a `super.img` from the unverified legacy geometry.
-- The custom configfs USB file is reduced to recovery's supported ADB and MTP
-  compositions, resets both ADB and MTP FunctionFS readiness, and removes the
-  stale diagnostic/accessory/RNDIS compositions.
-- Variant selection checks `ro.boot.project_codename` first and retains the two
-  known numeric `ro.boot.project_name` fallbacks. `hotdogb`, `hotdog`, and
-  `hotdogg` map to 7T, 7T Pro, and 7T Pro 5G respectively. An unknown device
-  leaves the ROM/bootloader identity unchanged; no numeric 5G project ID is
-  invented.
-- The physical `system_a/b` and `vendor_a/b` recovery wipe list is removed. It
-  is invalid and unsafe for logical partitions.
-- The dormant `mount-dynamic-rw` service and script are removed; they disabled
-  SELinux enforcement and attempted writable remounts despite never being
-  started by the current tree.
-- The A/B OTA list now includes the device-specific `odm`, `product`,
-  `recovery`, and `vbmeta_system` partitions corroborated by the LineageOS 19
-  hotdog tree. Actual ColorOS payload metadata remains the authority before
-  any OTA or slot-write test.
-- The boot-control service starts only after `/dev/block/bootdevice` exists.
-- The known 5G modem/SPU partitions receive the same compatibility aliases as
-  the Android 12 hotdog reference. Their source paths and OTA behavior remain
-  part of the hotdogg device-test gate.
-- Encrypted-backup exclusion is expressed as literal `true`. The pinned
-  recovery snapshot has contradictory OpenAES conditionals, so CI applies a
-  checksum-pinned four-hunk fix that makes `true` consistently exclude the
-  library, command, and relink request.
-- The pinned recovery also requires a `task_recovery_profiles.json` module that
-  its pinned system/core tree does not define. CI adds that recovery-only module
-  using system/core's own Android 12 `task_profiles.json`; the stale Android 11
-  device-root copy is no longer treated as the module definition.
-- The recovery image is capped at the conservative 96 MiB size corroborated by
-  the newer hotdog tree until the physical ColorOS recovery partition is read
-  from a device. Screen blanking uses the panel-safe brightness path (maximum
-  1023, default 200) instead of a framebuffer blank that the Android 12
-  reference reports can disable touch.
-- Plain ADB gadget binding is left to current TWRP's core init rules. The
-  device USB overlay retains only its MTP and compatibility compositions,
-  avoiding a second action that unbound and rebound the same configfs link.
-- Make lists have exact final entries without dangling continuations. Local
-  `Android.bp`, `bootctrl/`, and `gpt-utils/` definitions remain because an
-  exact duplicate replacement has not been proven in the resolved 12.1 tree.
-- The obsolete debuggerd relink request was removed; current recovery no longer
-  consumes its old variable name. All touched scripts are normalized to LF,
-  and CI rejects carriage returns in the variant script before building.
+1. minimal stock-side routing, dynamic fstab, SELinux context, Keystore2, and
+   TWRP flag changes;
+2. the private TWRP executables, resources, linker, recursive ELF closure, and
+   the exact five-file Oplus decrypt load group;
+3. the Hotdog ODM CommonDCS library required by the stock cryptoeng service.
 
-## Deliberately unresolved runtime gates
+Every unpatched stock CPIO entry must remain byte-and-metadata identical.
+The verifier rejects duplicate paths, missing closure members, unresolved
+strong symbols, altered OnePlus VINTF/crypto sentinels, invalid dynamic fstab
+rows, missing adapter markers, unexpected boot-header changes, component drift,
+partition-size drift, and malformed AVB data.
 
-These must be resolved from the exact target HD191x ColorOS 12 firmware or a
-booted stock device before an image is treated as usable:
+## OxygenOS 12 fingerprints
 
-1. **Filesystem and encryption policy.** `recovery.fstab` is unchanged and
-   remains ext4-only. Do not add EROFS/F2FS or alter metadata/FBE flags until
-   `blkid` and the target vendor/odm fstab prove the filesystem types and every
-   encryption option.
-2. **Super metadata and OTA set.** The existing size `15032385536`, group
-   `qti_dynamic_partitions`, group size `6441926656`, logical partition list,
-   and expanded A/B OTA list are still target-firmware-unverified. Reconcile
-   them with payload metadata or on-device `lpdump`; do not infer them from
-   guacamole.
-3. **Kernel and image components.** The unchanged 2021 recovery kernel is known
-   not to provide EROFS support. Replace it only with a hotdog-valid,
-   source-pinned kernel plus matching DTB/DTBO after checking EROFS, Unicode,
-   fscrypt, inline encryption, dm-default-key, ext4, and F2FS support.
-4. **Proprietary ABI and VINTF.** No Keymaster, Gatekeeper, QSEE, Oplus crypto,
-   boot-control, display, or VINTF files were added or replaced. Import only a
-   complete, hash-pinned closure from the exact target firmware. Existing
-   VINTF enforcement remains a build/runtime gate, not proof of compatibility.
-5. **5G numeric identity.** `hotdogg` codename handling is present, but the
-   stock numeric 5G project ID remains unknown and intentionally unsupported.
-6. **Boot-control definitions.** A full resolved-source build must check for
-   duplicate `bootctrl.msmnile`/`libgptutils` definitions. Remove the local
-   definitions only if the selected 12.1 common trees provide identical module
-   names and behavior.
-
-## Preserved file fingerprints
-
-The port does not change these files:
-
-| File | Bytes | SHA-256 |
+| Component | Bytes | SHA-256 |
 |---|---:|---|
-| `prebuilt/Image.gz` | 39,518,224 | `5cce136f5ebcede8ac03ae896dc64dc160c30c9ead981ae52d586e3598f578be` |
-| `prebuilt/dtb.img` | 4,255,822 | `5fe452d09b59cf169662a0ec1f25a8d4ac9cd217852a28c8908a5b5c3860ad5a` |
-| `prebuilt/dtbo.img` | 16,216,914 | `bd9640691f9d543204deb107e92de4f8ecf117e52d79b79cead8de031450d465` |
-| `recovery.fstab` | 3,349 | `d932006aece65ed8a4445f64ee7d488232cb29f0b1ce2582fee501ce168e08dc` |
-| `recovery/root/system/etc/twrp.flags` | 1,774 | `ce7bb5c2878af10e1881d87f2b93cae7d45b12577951372131e2a5087ef267e6` |
+| source stock recovery image | 100,663,296 | `3a776605346aca4e5e98f588e72a68cd38f8f01c782f573ff3efd26b93389916` |
+| stock boot payload | 77,979,648 | `c4c38d24caebf0e7d64754b0f5ac58651496a85359dda0e4ba327385998d7790` |
+| kernel | 40,142,864 | `4b435ff44ed87d45a334f071d0af59f8579e8d0ac70ddd1bc4cdbf8ac39b2d6a` |
+| recovery-DTBO | 5,165,936 | `7187d1e64e79b1a9416b1fb332ef8d670cc59ad6dcacc6864db2ed2eec0fd5b7` |
+| DTB | 12,168,729 | `558825c788f86b64927ca1c254db8876d4d54a27d067db3ba8b53f1543a28618` |
+| stock gzip ramdisk | 20,489,437 | `97449f9d692985bd44305bd23fe59db34a3d26711d6aea25f4dc4b8398546aed` |
+| stock raw CPIO | 58,282,496 | `7fe6263a5cc654b363ef010a3b140ea404393dbf992ca0580156357d6e7c46d0` |
+| Hotdog ODM CommonDCS | 76,160 | `b626c790281f66279136437ca7065b5c0318462407c11c2a6ec2af04dc35e5a6` |
+
+The source recovery reports Android 12, security patch `2022-12-05`, and
+fingerprint
+`qti/msmnile/msmnile:12/SKQ1.210216.001/1676623833591:user/release-keys`.
 
 ## Validation boundary
 
-Local static validation completed successfully:
-
-- `git diff --check`;
-- Makefile continuation checks (no list continues into a blank/comment or EOF);
-- JSON parsing of `twrp.dependencies`;
-- `sh -n` for `unified-script.sh`;
-- five-column parsing of all eight non-comment `recovery.fstab` rows, including
-  `logical` on every OS logical-partition row;
-- basic field parsing of every non-comment `twrp.flags` row;
-- structural checks of both recovery init files and exact boot/health service
-  name matching against the current TWRP 12.1 init definitions;
-- assertions for dynamic A/B, header v2, dedicated recovery, and unchanged
-  kernel/DTB/DTBO/fstab fingerprints;
-- absence of the removed wipe list and Android 11 ashmem references.
-- checksum and path validation of the two pinned snapshot compatibility
-  patches. The minimal manifest requires `ALLOW_MISSING_DEPENDENCIES` for
-  omitted CTS/VTS-only defaults; critical recovery outputs are therefore
-  checked explicitly rather than treating that global switch as closure proof.
-
-This local patch is intended for a GitHub Actions compile-only gate against a
-guarded, partially pinned TWRP 12.1 source set. CI records the full resolved
-manifest, but it is not yet a complete 253-project lockfile. No recovery image
-was built or tested here. A successful compile would prove source compatibility
-only; it would not prove mounting, decryption, display/touch, slot switching,
-fastbootd, or safe flashing.
-
-First device testing must be non-destructive. Prefer temporary boot only where
-the bootloader supports it; otherwise back up both recovery slots first. Do not
-format, wipe, change slots, run Fix Contexts, or write `/data` during the first
-mount/decrypt investigation.
+A green workflow proves deterministic construction, source markers, binary
+dependency closure, OOS12 component identity, stock-file preservation, image
+layout, and a structurally valid test AVB footer. It does not replace a real
+device test of boot, display/touch, `/data` decryption, MTP, sideload,
+fastbootd, slot handling, or safe flashing. The published image therefore
+retains the `DEVICE-TEST` label until those checks are recorded on hardware.

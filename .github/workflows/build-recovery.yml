@@ -1,4 +1,4 @@
-name: Hotdog TWRP 12.1 ColorOS
+name: Hotdog OOS12 stock-first TWRP ColorOS
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
     paths:
       - ".github/workflows/build-recovery.yml"
       - "build/coloros/**"
+      - "build/oos12/**"
+      - "prebuilt/oos12/**"
       - "recovery/root/**"
       - "BoardConfig.mk"
       - "device.mk"
@@ -47,9 +49,14 @@ jobs:
       BUILD_TARGET: recoveryimage
       RECOVERY_IMAGE_REL: out/target/product/hotdog/recovery.img
       RECOVERY_PARTITION_SIZE: "100663296"
-      PREBUILT_KERNEL_SHA256: 5cce136f5ebcede8ac03ae896dc64dc160c30c9ead981ae52d586e3598f578be
-      PREBUILT_DTB_SHA256: 5fe452d09b59cf169662a0ec1f25a8d4ac9cd217852a28c8908a5b5c3860ad5a
-      PREBUILT_DTBO_SHA256: bd9640691f9d543204deb107e92de4f8ecf117e52d79b79cead8de031450d465
+      OOS12_MANIFEST_SHA256: 4dc2dc274dfe693766d2c63cc0e528a3ccd274fd9a748ae345026fac14692987
+      PREBUILT_KERNEL_SHA256: 4b435ff44ed87d45a334f071d0af59f8579e8d0ac70ddd1bc4cdbf8ac39b2d6a
+      PREBUILT_DTB_SHA256: 558825c788f86b64927ca1c254db8876d4d54a27d067db3ba8b53f1543a28618
+      PREBUILT_DTBO_SHA256: 7187d1e64e79b1a9416b1fb332ef8d670cc59ad6dcacc6864db2ed2eec0fd5b7
+      STOCK_RAMDISK_GZIP_SHA256: 97449f9d692985bd44305bd23fe59db34a3d26711d6aea25f4dc4b8398546aed
+      STOCK_RAMDISK_RAW_SHA256: 7fe6263a5cc654b363ef010a3b140ea404393dbf992ca0580156357d6e7c46d0
+      COMMONDCS_SHA256: b626c790281f66279136437ca7065b5c0318462407c11c2a6ec2af04dc35e5a6
+      AVBTOOL_SHA256: a9ec360fc5395db9b72d36c03af59ff984f4eefcc349dc32a556de7f8ed892ab
       BUILD_JOBS: "4"
       LC_ALL: C
       TZ: UTC
@@ -255,11 +262,27 @@ jobs:
           assert_revision "$DEVICE_PATH" "$GITHUB_SHA"
 
           printf '%s  %s\n' \
-            "$PREBUILT_KERNEL_SHA256" "$DEVICE_PATH/prebuilt/Image.gz" \
-            "$PREBUILT_DTB_SHA256" "$DEVICE_PATH/prebuilt/dtb.img" \
-            "$PREBUILT_DTBO_SHA256" "$DEVICE_PATH/prebuilt/dtbo.img" \
+            "$OOS12_MANIFEST_SHA256" "$DEVICE_PATH/prebuilt/oos12/manifest.json" \
+            "$PREBUILT_KERNEL_SHA256" "$DEVICE_PATH/prebuilt/oos12/kernel" \
+            "$PREBUILT_DTB_SHA256" "$DEVICE_PATH/prebuilt/oos12/dtb.img" \
+            "$PREBUILT_DTBO_SHA256" "$DEVICE_PATH/prebuilt/oos12/recovery-dtbo.img" \
+            "$STOCK_RAMDISK_GZIP_SHA256" "$DEVICE_PATH/prebuilt/oos12/ramdisk-stock.cpio.gz" \
+            "$COMMONDCS_SHA256" "$DEVICE_PATH/prebuilt/oos12/odm/lib64/vendor.oplus.hardware.commondcs@1.0.so" \
+            "$AVBTOOL_SHA256" "$DEVICE_PATH/build/oos12/avbtool_android-12.1.0_r4.py" \
             | sha256sum --check - \
             | tee "$GITHUB_WORKSPACE/prebuilt-source-check.txt"
+          python3 - "$DEVICE_PATH/prebuilt/oos12/manifest.json" <<'PY'
+          import json
+          import sys
+
+          manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert manifest["firmware"]["android_version"] == "12"
+          assert manifest["stock_ramdisk_raw_sha256"] == (
+              "7fe6263a5cc654b363ef010a3b140ea404393dbf992ca0580156357d6e7c46d0"
+          )
+          assert manifest["stock_ramdisk_entries"] == 711
+          assert manifest["source_stock_recovery_bytes"] == 100663296
+          PY
 
           if grep -Eq '<project[^>]+path="kernel/oneplus/' \
             "$GITHUB_WORKSPACE/twrp-snapshot.xml"; then
@@ -267,12 +290,20 @@ jobs:
             exit 1
           fi
 
-          test "$(grep -Fc 'mkdir /tmp/misc' \
-            "$DEVICE_PATH/recovery/root/init.recovery.qcom.rc")" = 2
           grep -Fq 'TW_INCLUDE_OPLUS_H40_DECRYPT := true' \
             "$DEVICE_PATH/BoardConfig.mk"
           test ! -e "$DEVICE_PATH/recovery/root/system/etc/task_profiles.json"
-          sh -n "$DEVICE_PATH/recovery/root/system/bin/unified-script.sh"
+          for obsolete in \
+            "$DEVICE_PATH/prebuilt/Image.gz" \
+            "$DEVICE_PATH/prebuilt/dtb.img" \
+            "$DEVICE_PATH/prebuilt/dtbo.img" \
+            "$DEVICE_PATH/recovery/root/vendor" \
+            "$DEVICE_PATH/recovery/root/system/bin/qseecomd" \
+            "$DEVICE_PATH/recovery/root/system/bin/android.hardware.keymaster@4.0-service-qti"
+          do
+            test ! -e "$obsolete"
+          done
+          python3 -m py_compile "$DEVICE_PATH/build/oos12/"*.py
           git -C "$DEVICE_PATH" diff --check
 
           {
@@ -287,6 +318,10 @@ jobs:
             echo "build_target=$BUILD_TARGET"
             echo "partition_model=dynamic-ab-dedicated-recovery"
             echo "kernel_source_project_synced=false"
+            echo "recovery_baseline=oxygenos12-stock-first"
+            echo "stock_recovery_sha256=3a776605346aca4e5e98f588e72a68cd38f8f01c782f573ff3efd26b93389916"
+            echo "stock_ramdisk_raw_sha256=$STOCK_RAMDISK_RAW_SHA256"
+            echo "commondcs_sha256=$COMMONDCS_SHA256"
             sha256sum "$DEVICE_PATH/build/coloros/patches/"*.patch
           } | tee "$GITHUB_WORKSPACE/build-provenance.txt"
 
@@ -364,17 +399,17 @@ jobs:
           set -euo pipefail
           product_root="$RUNNER_TEMP/twrp/out/target/product/hotdog"
           recovery_root="$product_root/recovery/root"
-          destination="$RUNNER_TEMP/hotdog-coloros-compiled-payload"
+          destination="$RUNNER_TEMP/hotdog-coloros-compiled-intermediate"
           mkdir -p "$destination/system/bin" "$destination/system/lib64"
-          image="$destination/twrp-hotdog-coloros-12.1-UNTESTED.img"
+          image="$destination/COMPILED-INTERMEDIATE-DO-NOT-FLASH.img"
           install -m 0644 "$product_root/recovery.img" "$image"
-          sha256sum "$image" > "$destination/twrp-hotdog-coloros-12.1-UNTESTED.img.sha256"
-          cat > "$destination/UNTESTED.txt" <<'EOF'
-          UNTESTED HOTDOG COLOROS ADAPTER BUILD
+          sha256sum "$image" > "$destination/COMPILED-INTERMEDIATE-DO-NOT-FLASH.img.sha256"
+          cat > "$destination/DO-NOT-FLASH.txt" <<'EOF'
+          COMPILED INTERMEDIATE - DO NOT FLASH
 
-          Compilation completed successfully. This failsafe artifact is
-          uploaded before post-build validation, so its presence does not mean
-          that ELF, image-layout, boot, mount, or decryption checks passed.
+          This is the source-stage input to the OOS12 stock-first packager.
+          It is uploaded only as a failsafe for build debugging. Download the
+          OOS12 stock-first DEVICE-TEST artifact instead.
 
           Do not flash it from this CI result alone.
           EOF
@@ -392,7 +427,7 @@ jobs:
           done
           (
             cd "$destination"
-            find . -type f -print0 | LC_ALL=C sort -z \
+            find . -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z \
               | xargs -0 sha256sum > SHA256SUMS
           )
 
@@ -400,8 +435,8 @@ jobs:
         if: ${{ always() && steps.compiled_failsafe.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: hotdog-coloros-UNTESTED-recovery-image
-          path: ${{ runner.temp }}/hotdog-coloros-compiled-payload/
+          name: hotdog-COMPILED-INTERMEDIATE-DO-NOT-FLASH
+          path: ${{ runner.temp }}/hotdog-coloros-compiled-intermediate/
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -424,9 +459,6 @@ jobs:
             "$recovery_root/system/bin/oplus_h40_credential_helper" \
             "$recovery_root/system/bin/keystore2" \
             "$recovery_root/system/lib64/libbinder.so" \
-            "$recovery_root/system/bin/qseecomd" \
-            "$recovery_root/system/bin/android.hardware.keymaster@4.0-service-qti" \
-            "$recovery_root/system/bin/android.hardware.gatekeeper@1.0-service-qti" \
             "$recovery_root/init.recovery.qcom_decrypt.rc" \
             "$recovery_root/init.recovery.qcom_decrypt.fbe.rc" \
             "$recovery_root/system/etc/init/keystore2.rc" \
@@ -444,8 +476,6 @@ jobs:
             echo "keystore2 retained an unsafe early automatic start" >&2
             exit 1
           fi
-          grep -Fq 'mkdir /tmp/misc/keystore/' \
-            "$recovery_root/init.recovery.qcom.rc"
           cmp "$DEVICE_PATH/recovery/root/twres/splash.xml" \
             "$recovery_root/twres/splash.xml"
           cmp "$DEVICE_PATH/recovery/root/twres/images/mirumiru.png" \
@@ -490,53 +520,168 @@ jobs:
           bash "$DEVICE_PATH/build/coloros/verify-hotdog-recovery-image.sh" \
             "$RUNNER_TEMP/twrp" \
             "$recovery_image" \
-            "$DEVICE_PATH/prebuilt/Image.gz" \
-            "$DEVICE_PATH/prebuilt/dtb.img" \
-            "$DEVICE_PATH/prebuilt/dtbo.img" \
+            "$DEVICE_PATH/prebuilt/oos12/kernel" \
+            "$DEVICE_PATH/prebuilt/oos12/dtb.img" \
+            "$DEVICE_PATH/prebuilt/oos12/recovery-dtbo.img" \
             "$RECOVERY_PARTITION_SIZE" \
             "$GITHUB_WORKSPACE"
 
-          oem_library="$recovery_root/system/lib64/libdecrypt_recovery.so"
-          if test -s "$oem_library" &&
-             grep -RFl 'service hal_cryptoeng_oplus' "$recovery_root" \
-               > "$GITHUB_WORKSPACE/cryptoeng-init-files.txt"; then
-            echo 'candidate: OEM decrypt library and cryptoeng init service are packaged' \
-              | tee "$GITHUB_WORKSPACE/coloros-runtime-readiness.txt"
-          else
-            echo 'blocked: exact Hotdog ColorOS OEM decrypt/cryptoeng closure is not packaged' \
-              | tee "$GITHUB_WORKSPACE/coloros-runtime-readiness.txt"
-            : > "$GITHUB_WORKSPACE/cryptoeng-init-files.txt"
-          fi
+          echo 'ready: exact OOS12 stock ramdisk and audited OEM closure are packaged by the stock-first stage' \
+            | tee "$GITHUB_WORKSPACE/coloros-runtime-readiness.txt"
 
-          cp "$recovery_image" \
-            "$GITHUB_WORKSPACE/twrp-hotdog-coloros-12.1-UNTESTED.img"
-          sha256sum "$GITHUB_WORKSPACE/twrp-hotdog-coloros-12.1-UNTESTED.img" \
-            | tee "$GITHUB_WORKSPACE/twrp-hotdog-coloros-12.1-UNTESTED.img.sha256"
-          cat > "$GITHUB_WORKSPACE/UNTESTED.txt" <<'EOF'
-          UNTESTED HOTDOG COLOROS ADAPTER BUILD
-
-          This image passed pinned-source compilation, adapter-marker, ELF, and
-          dedicated-recovery layout checks. It has not proven boot, display,
-          touch, mounts, decryption, fastbootd, slot handling, or safe flashing.
-          The exact Hotdog ColorOS OEM decrypt/cryptoeng closure is a separate
-          runtime gate recorded in coloros-runtime-readiness.txt.
-
-          Do not flash it from this CI result alone.
-          EOF
-
-      - name: Upload verified untested recovery image
+      - name: Assemble and independently verify OOS12 stock-first image
+        id: stock_first
         if: ${{ always() && steps.verify.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/twrp"
+          product_root="out/target/product/hotdog"
+          recovery_image="$product_root/recovery.img"
+          tools="$DEVICE_PATH/build/oos12"
+          prebuilt="$DEVICE_PATH/prebuilt/oos12"
+          work="$RUNNER_TEMP/hotdog-oos12-stock-first"
+          ready="$RUNNER_TEMP/hotdog-oos12-stock-first-ready"
+          mkdir -p "$work" "$ready"
+
+          python3 "$tools/assemble_stock_boot_v2.py" \
+            --prebuilt-dir "$prebuilt" \
+            --manifest "$prebuilt/manifest.json" \
+            --output "$work/stock-boot-payload.img" \
+            --report "$work/stock-assemble.json"
+          python3 "$tools/extract_boot_ramdisk.py" \
+            --image "$work/stock-boot-payload.img" \
+            --raw-cpio "$work/stock.cpio" \
+            --report "$work/stock-extract.json"
+          printf '%s  %s\n' "$STOCK_RAMDISK_RAW_SHA256" "$work/stock.cpio" \
+            | sha256sum --check -
+
+          python3 "$tools/extract_boot_ramdisk.py" \
+            --image "$recovery_image" \
+            --raw-cpio "$work/twrp.cpio" \
+            --report "$work/twrp-extract.json"
+          python3 "$tools/extract_newc_regulars.py" \
+            --cpio "$work/stock.cpio" \
+            --output "$work/stock-tree"
+          python3 "$tools/extract_newc_regulars.py" \
+            --cpio "$work/twrp.cpio" \
+            --output "$work/twrp-tree"
+
+          python3 "$tools/make_hotdog_stock_overlay.py" \
+            --newc-dir "$tools" \
+            --stock-cpio "$work/stock.cpio" \
+            --twrp-cpio "$work/twrp.cpio" \
+            --output "$work/stock-overlay.cpio" \
+            --manifest "$work/stock-overlay.json"
+          python3 "$tools/make_private_twrp_overlay.py" \
+            --twrp-tree "$work/twrp-tree" \
+            --twrp-cpio "$work/twrp.cpio" \
+            --stock-cpio "$work/stock.cpio" \
+            --stock-tree "$work/stock-tree" \
+            --dlopen-root-manifest "$tools/h40-proprietary-manifest.json" \
+            --elf-audit-dir "$tools" \
+            --output "$work/private-overlay.cpio" \
+            --manifest "$work/private-overlay.json" \
+            --required-helper system/bin/minadbd \
+            --required-helper system/bin/sload_f2fs \
+            --required-helper system/bin/resize2fs \
+            --required-helper system/bin/fastbootd \
+            --required-helper system/bin/bu \
+            --required-helper system/bin/pigz \
+            --required-helper system/bin/unzip \
+            --required-helper system/bin/keystore2 \
+            --required-helper system/bin/oplus_h40_credential_helper \
+            --required-helper system/bin/keystore_cli_v2
+          python3 "$tools/make_hotdog_cryptoeng_overlay.py" \
+            --newc-dir "$tools" \
+            --elf-audit-dir "$tools" \
+            --stock-cpio "$work/stock.cpio" \
+            --source "$prebuilt/odm/lib64/vendor.oplus.hardware.commondcs@1.0.so" \
+            --output "$work/cryptoeng-overlay.cpio" \
+            --manifest "$work/cryptoeng-overlay.json"
+
+          python3 "$tools/merge_newc.py" \
+            --base "$work/stock.cpio" \
+            --overlay "$work/stock-overlay.cpio" \
+            --overlay "$work/private-overlay.cpio" \
+            --overlay "$work/cryptoeng-overlay.cpio" \
+            --output "$work/hybrid.cpio" \
+            --report "$work/merge.json"
+          python3 "$tools/gzip_deterministic.py" \
+            "$work/hybrid.cpio" "$work/hybrid.cpio.gz" \
+            | tee "$work/gzip-report.json"
+          python3 "$tools/repack_boot_v2.py" \
+            --stock-boot "$work/stock-boot-payload.img" \
+            --ramdisk "$work/hybrid.cpio.gz" \
+            --output "$work/recovery-preavb.img" \
+            --report "$work/repack.json"
+
+          cp "$work/recovery-preavb.img" "$work/recovery.img"
+          python3 "$tools/avbtool_android-12.1.0_r4.py" add_hash_footer \
+            --image "$work/recovery.img" \
+            --partition_name recovery \
+            --partition_size "$RECOVERY_PARTITION_SIZE" \
+            --algorithm NONE \
+            --rollback_index 1 \
+            --salt a4c2ab49d2e1d3f7bc804867c5bfb9e4730bebe18c9be9db732b9afc4eded952 \
+            --prop 'com.android.build.recovery.fingerprint:qti/msmnile/msmnile:12/SKQ1.210216.001/1676623833591:user/release-keys' \
+            --prop 'com.android.build.boot.os_version:12' \
+            --prop 'com.android.build.boot.security_patch:2022-12-05' \
+            --prop 'com.android.build.boot.security_patch:2022-12-05'
+          python3 "$tools/avbtool_android-12.1.0_r4.py" verify_image \
+            --image "$work/recovery.img" \
+            | tee "$work/avb-verify.txt"
+          python3 "$tools/avbtool_android-12.1.0_r4.py" info_image \
+            --image "$work/recovery.img" \
+            | tee "$work/avb-info.txt"
+
+          python3 "$tools/verify_hotdog_stock_first.py" \
+            --module-dir "$tools" \
+            --stock-recovery "$work/stock-boot-payload.img" \
+            --final-recovery "$work/recovery.img" \
+            --stock-cpio "$work/stock.cpio" \
+            --raw-ramdisk "$work/hybrid.cpio" \
+            --gzip-ramdisk "$work/hybrid.cpio.gz" \
+            --stock-patch-manifest "$work/stock-overlay.json" \
+            --private-manifest "$work/private-overlay.json" \
+            --cryptoeng-manifest "$work/cryptoeng-overlay.json" \
+            --report "$work/verification.json"
+
+          output_name='hotdog-OOS12-stock-first-TWRP-ColorOS-DYNAMIC-IDENTITY-TEST.img'
+          install -m 0644 "$work/recovery.img" "$ready/$output_name"
+          install -m 0644 \
+            "$work/verification.json" \
+            "$work/stock-assemble.json" \
+            "$work/stock-overlay.json" \
+            "$work/private-overlay.json" \
+            "$work/cryptoeng-overlay.json" \
+            "$work/merge.json" \
+            "$work/repack.json" \
+            "$work/avb-info.txt" \
+            "$ready/"
+          cat > "$ready/DEVICE-TEST.txt" <<'EOF'
+          HOTDOG OXYGENOS 12 STOCK-FIRST TWRP COLOROS IMAGE
+
+          CI reconstructed the pinned OOS12 recovery baseline, injected the
+          audited private TWRP/ColorOS runtime and exact dependency closure,
+          added a test AVB hash footer, and independently verified the final
+          96 MiB image. The image is ready for controlled device testing.
+          EOF
+          (
+            cd "$ready"
+            sha256sum "$output_name" > "$output_name.sha256"
+            find . -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z \
+              | xargs -0 sha256sum > SHA256SUMS
+          )
+
+      - name: Upload OOS12 stock-first device-test image
+        if: ${{ always() && steps.stock_first.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: hotdog-coloros-VERIFIED-UNTESTED-recovery-image
-          path: |
-            twrp-hotdog-coloros-12.1-UNTESTED.img
-            twrp-hotdog-coloros-12.1-UNTESTED.img.sha256
-            coloros-runtime-readiness.txt
-            UNTESTED.txt
+          name: hotdog-OOS12-stock-first-TWRP-ColorOS-DEVICE-TEST
+          path: ${{ runner.temp }}/hotdog-oos12-stock-first-ready/
           if-no-files-found: error
           compression-level: 0
-          retention-days: 7
+          retention-days: 14
 
       - name: Upload build diagnostics
         if: always()
@@ -557,7 +702,11 @@ jobs:
             recovery-image-layout.txt
             recovery-image.sha256
             coloros-runtime-readiness.txt
-            cryptoeng-init-files.txt
             elf-report/
+            ${{ runner.temp }}/hotdog-oos12-stock-first/stock-assemble.json
+            ${{ runner.temp }}/hotdog-oos12-stock-first/stock-extract.json
+            ${{ runner.temp }}/hotdog-oos12-stock-first/twrp-extract.json
+            ${{ runner.temp }}/hotdog-oos12-stock-first/gzip-report.json
+            ${{ runner.temp }}/hotdog-oos12-stock-first/avb-verify.txt
           if-no-files-found: warn
           retention-days: 14

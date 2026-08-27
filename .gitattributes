@@ -6,9 +6,13 @@
 *.sh text eol=lf
 *.xml text eol=lf
 *.yml text eol=lf
+.gitattributes text eol=lf
 
 *.bin binary
 *.gz binary
 *.img binary
 *.pem binary
 *.so binary
+*.cpio binary
+*.py text eol=lf
+prebuilt/oos12/kernel binary

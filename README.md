@@ -1,55 +1,50 @@
-# Device Tree for OnePlus 7T Pro aka Hotdog for TWRP (this should be unified with 7T, but I cannot test since I do not own that device)
-## Disclaimer - Unofficial TWRP!
-These are personal test builds of mine. In no way do I hold responsibility if it/you messes up your device.
-Proceed at your own risk.
+# OnePlus Hotdog TWRP 12.1 — OxygenOS 12 stock-first ColorOS edition
 
-### Note
-2021-04-27:
-Initial build which boots on OOS11 for 7T / Pro.
-Decryption on OOS11 does not work. Might work on custom that uses OOS11 blobs.
+This branch builds TWRP for the OnePlus 7T family (`hotdog`, `hotdogb`, and
+`hotdogg`) as a dedicated recovery-partition image for dynamic A/B devices.
+It is an unofficial test project; flashing remains at the tester's risk.
 
-## Android 12.1 ColorOS branch
+## Current build architecture
 
-`android-12.1-latest-snapshot` is the maintained TWRP 12.1 branch. It preserves
-Hotdog's dynamic A/B logical partitions and dedicated, slotted recovery image;
-it does not use Guacamole's static-A/B recovery-as-boot packaging.
+The repository no longer uses the 2021 OxygenOS 11 recovery foundation.
+The kernel, DTB, recovery-DTBO, stock recovery ramdisk, and required ODM
+CommonDCS dependency are exact, hash-pinned OxygenOS 12 components under
+`prebuilt/oos12/`. The old device-root Qualcomm/OnePlus binary collection was
+removed instead of being mixed with the newer firmware.
 
-The branch ports the reviewed Guacamole ColorOS 12 decryption source adapter,
-including the final parent-KeyStorage, malformed-`pKMblob`, Keystore2 recovery
-permission, and Binder stability fixes. Hotdog uses its TWRP-built Keystore2
-directly, with a disabled credential-time service and an init-created temporary
-database directory. The Guacamole hybrid-ramdisk private-runtime packager is
-not used.
+GitHub Actions performs two linked stages:
 
-GitHub Actions pins the manifest and critical source projects, verifies every
-patch checksum and safety marker, builds `recoveryimage`, uploads a compiled
-payload immediately after a successful link, and then audits the final image,
-ELFs, prebuilt kernel/DTB/recovery-DTBO, custom MiruMira splash, and partition
-size.
+1. Build the pinned TWRP 12.1 source with the reviewed ColorOS decryption,
+   parent-KeyStorage, Keystore2, and Binder compatibility patches.
+2. Construct the final image from the OOS12 stock recovery ramdisk, preserve
+   its OnePlus files, add only an audited private TWRP runtime and exact ELF
+   dependency closure, repack it with the stock OOS12 boot components, add a
+   test AVB footer, and independently verify the result.
 
-Any Actions image is **untested**. The exact Hotdog ColorOS OEM decrypt library,
-cryptoeng service, dependency closure, and VINTF material have not been imported
-from target firmware, so a green compile is not proof of working decryption.
-The current kernel also lacks EROFS support. See [PORT-NOTES.md](PORT-NOTES.md)
-and [build/coloros/README.md](build/coloros/README.md) for the precise boundary.
+The authoritative artifact is named
+`hotdog-OOS12-stock-first-TWRP-ColorOS-DEVICE-TEST`. The earlier plain TWRP
+build is retained only as a diagnostic/failsafe input to the stock-first stage.
 
-#### Legacy Android 11 status
-- [X] Flashing ROMs (AOSP and OOS)
-- [X] ADB (+ sideload)
-- [X] all important partitions listed in mount/backup lists
-- [X] MTP export
-- [X] decrypt /data - Only working for Custom A10 and A11 ROMs using OOS10 blobs
-- [X] Backup to internal/microSD - Not working
-- [X] Restore from internal/microSD - Not working
-- [X] F2FS/EXT4 Support, exFAT/NTFS where supported
-- [X] backup/restore to/from external (USB-OTG) storage
-- [X] update.zip sideload
-- [X] backup/restore to/from adb (https://gerrit.omnirom.org/#/c/15943/)
+## Partition and decryption model
 
-#### Not working - OxygenOS specific
-- Decryption and probably everything that requires it
+Hotdog keeps its native layout: dynamic A/B logical partitions in `super`, a
+dedicated slotted recovery partition, Android boot header v2, and a 96 MiB
+recovery partition. System identity discovery supports both mounted dynamic
+mapper devices and static by-name partitions, while failing closed when no
+valid system identity is available.
 
-##### Credits
-- CaptainThrowback for original trees.
-- mauronofrio for original trees.
-- TWRP team and everyone involved for their amazing work.
+The private runtime includes the exact recursive `DT_NEEDED` closure for TWRP
+and the five stock Oplus decrypt libraries selected by the pinned manifest.
+The stock cryptoeng service's missing CommonDCS dependency is taken from the
+matching Hotdog OOS12 ODM image and checked at both the SONAME/symbol and hash
+levels.
+
+See [PORT-NOTES.md](PORT-NOTES.md),
+[build/coloros/README.md](build/coloros/README.md), and
+[prebuilt/oos12/README.md](prebuilt/oos12/README.md) for the validation and
+provenance boundaries.
+
+## Credits
+
+TeamWin, CaptainThrowback, mauronofrio, the minimal-manifest maintainers, and
+everyone whose OnePlus/Qualcomm recovery work this tree builds upon.
