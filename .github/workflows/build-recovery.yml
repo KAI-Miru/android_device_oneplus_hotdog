@@ -443,7 +443,9 @@ jobs:
           done
 
           bash "$DEVICE_PATH/build/coloros/verify-recovery-elf.sh" \
-            "$recovery_root/system/bin/recovery" "$report"
+            "$recovery_root/system/bin/recovery" \
+            "$recovery_root/system/bin/oplus_h40_credential_helper" \
+            "$report"
           readelf --program-headers --wide \
             "$recovery_root/system/bin/oplus_h40_credential_helper" \
             > "$report/credential-helper.program-headers"

@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$#" -ne 2 ]]; then
-  echo "usage: $0 RECOVERY_ELF REPORT_DIRECTORY" >&2
+if [[ "$#" -ne 3 ]]; then
+  echo "usage: $0 RECOVERY_ELF CREDENTIAL_HELPER_ELF REPORT_DIRECTORY" >&2
   exit 2
 fi
 
 recovery_elf="$1"
-report_dir="$2"
+credential_helper_elf="$2"
+report_dir="$3"
 
 test -f "$recovery_elf"
+test -f "$credential_helper_elf"
 mkdir -p "$report_dir"
 command -v readelf >/dev/null
 command -v strings >/dev/null
@@ -42,13 +44,16 @@ fi
 string_report="$report_dir/recovery-adapter-strings.txt"
 : > "$string_report"
 all_strings="$(mktemp)"
-trap 'rm -f -- "$all_strings"' EXIT
+helper_strings="$(mktemp)"
+trap 'rm -f -- "$all_strings" "$helper_strings"' EXIT
 strings -a "$recovery_elf" > "$all_strings"
+strings -a "$credential_helper_elf" > "$helper_strings"
 
 check_string() {
   local label="$1"
   local value="$2"
-  if ! grep -Fqx -- "$value" "$all_strings"; then
+  local source="${3:-$all_strings}"
+  if ! grep -Fqx -- "$value" "$source"; then
     echo "missing $label string: $value" >&2
     exit 1
   fi
@@ -67,7 +72,8 @@ reject_string() {
 
 check_string dlopen_library 'libdecrypt_recovery.so'
 check_string dlsym_verify \
-  '_Z21OplusCredentialVerifyNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEEi'
+  '_Z21OplusCredentialVerifyNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEEi' \
+  "$helper_strings"
 check_string dlsym_setup_de_ce '_Z11setup_de_cei'
 check_string dlsym_get_password_type '_Z17get_password_typei'
 check_string dlsym_init_user0_ce '_Z21fscrypt_init_user0_cev'
@@ -128,9 +134,13 @@ check_string log_marker_credential_success \
   'I:Oplus H.40 v3 user 0 CE postcondition satisfied'
 
 sha256sum "$recovery_elf" > "$report_dir/recovery-elf.sha256"
+sha256sum "$credential_helper_elf" \
+  > "$report_dir/credential-helper-elf.sha256"
 {
   stat --printf='size_bytes=%s\n' "$recovery_elf"
   echo "elf_path=$recovery_elf"
+  stat --printf='credential_helper_size_bytes=%s\n' "$credential_helper_elf"
+  echo "credential_helper_elf_path=$credential_helper_elf"
 } > "$report_dir/recovery-elf-metadata.txt"
 
 {
@@ -143,4 +153,3 @@ sha256sum "$recovery_elf" > "$report_dir/recovery-elf.sha256"
   echo "dt_needed_libdecrypt_recovery=absent"
   echo "binary_uploaded=false"
 } | tee "$report_dir/adapter-verification.txt"
-
