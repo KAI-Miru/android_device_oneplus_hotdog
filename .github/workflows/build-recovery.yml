@@ -162,7 +162,7 @@ jobs:
           bc1398b4901403a33d7ad80a171ba95974ba2c938558bc10b69ff350e8850895  binder.patch
           29ef6a93de27f17dfb741cc3bf93eaf063cefacd739a8625e1c9b8e3f668156c  keystore-service.patch
           be435c026ea0af8d979c71dde853f6920d68bab7a44a40a12b810e67da86a673  openaes.patch
-          bb813e0dc3cfb4f08894178c33d2c237a1636e5e81de93221acae27196c72087  recovery.patch
+          c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e  recovery.patch
           0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523  security.patch
           452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364  task-profiles.patch
           bf99fa1bcd3c9c73fd94d0a554898df9711332b2dea87e8566a01f6f740be394  vold.patch
@@ -197,6 +197,12 @@ jobs:
             'libprocessgroup/profiles/Android.bp'
 
           grep -Fq '[H40 V51 PARENT]' bootable/recovery/partitionmanager.cpp
+          grep -Fq '[H40 PORTIDENTITY] using mounted dynamic system:' \
+            bootable/recovery/oplus_h40_decrypt.cpp
+          grep -Fq '/dev/block/mapper/system' \
+            bootable/recovery/oplus_h40_decrypt.cpp
+          grep -Fq '/dev/block/bootdevice/by-name/system' \
+            bootable/recovery/oplus_h40_decrypt.cpp
           grep -Fq 'Decrypt_User_H40_Modern' system/vold/Decrypt.cpp
           grep -Fq 'GetKeyUpgradeLock()' system/vold/KeyStorage.cpp
           grep -Fq 'GetKeyDirsToCommit()' system/vold/KeyStorage.cpp
@@ -466,6 +472,9 @@ jobs:
             > "$report/libbinder.strings"
 
           grep -Fq '[H40 V51 PARENT]' "$report/recovery.strings"
+          grep -Fq '[H40 PORTIDENTITY] using mounted dynamic system:' \
+            "$report/recovery.strings"
+          grep -Fq '/dev/block/mapper/system' "$report/recovery.strings"
           grep -Fq 'H40_RECOVERY_KEYSTORE2_PERMISSION_SHIM_V51' \
             "$report/keystore2.strings"
           grep -Fq 'H40_RECOVERY_BINDER_STABILITY_V0_V52' \
