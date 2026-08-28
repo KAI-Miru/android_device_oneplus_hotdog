@@ -76,7 +76,7 @@ check_string dlsym_verify \
   "$helper_strings"
 check_string dlsym_setup_de_ce '_Z11setup_de_cei'
 check_string dlsym_get_password_type '_Z17get_password_typei'
-check_string dlsym_init_user0_ce '_Z21fscrypt_init_user0_cev'
+reject_string removed_crashing_dlsym_init_user0_ce '_Z21fscrypt_init_user0_cev'
 check_string dlsym_mount_metadata \
   '_Z32fscrypt_mount_metadata_encryptedRKNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE'
 
@@ -128,8 +128,16 @@ check_string log_marker_key_not_present \
   'E:Oplus H.40 v3 FS_IOC_GET_ENCRYPTION_KEY_STATUS not PRESENT for %s: status=%u'
 check_string log_marker_active_unavailable \
   'E:Oplus H.40 active adapter returned unavailable; refusing generic credential fallback'
-check_string log_marker_no_lock_success \
+reject_string old_inprocess_no_lock_success \
   'I:Oplus H.40 v3 no-lock user 0 CE postcondition satisfied'
+check_string log_marker_no_lock_deferred \
+  'I:[OPLUS V57 NOCREDENTIAL] deferring CE proof to parent recovery'
+check_string log_marker_no_lock_handoff \
+  'I:[OPLUS V57 NOCREDENTIAL] requesting guarded parent-process CE install'
+check_string log_marker_no_lock_parent_install \
+  'I:[OPLUS V57 NOCREDENTIAL] installing user 0 CE key in the recovery parent'
+check_string log_marker_no_lock_success \
+  'I:[OPLUS V57 NOCREDENTIAL] user 0 CE postcondition satisfied'
 check_string log_marker_credential_success \
   'I:[H40 V50 HANDOFF] modern user 0 CE postcondition satisfied'
 
@@ -146,7 +154,9 @@ sha256sum "$credential_helper_elf" \
 {
   echo "result=pass"
   echo "adapter_version=$adapter_version"
-  echo "required_dlsym_strings=5"
+  echo "required_dlsym_strings=4"
+  echo "removed_crashing_init_user0_ce_symbol=absent"
+  echo "no_credential_parent_handoff=verified"
   echo "required_runtime_strings=3"
   echo "dlopen_library_string=present"
   echo "dt_needed_libdl=present"
