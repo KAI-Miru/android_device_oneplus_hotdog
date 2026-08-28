@@ -230,7 +230,7 @@ jobs:
           grep -Fq 'Decrypt_User_H40_Modern' system/vold/Decrypt.cpp
           grep -Fq 'direct-aes-minimal' system/vold/FsCrypt.cpp
           grep -Fq 'direct-aes-legacy-none' system/vold/FsCrypt.cpp
-          grep -Fq '{"encrypted_key", "secdiscardable", "stretching", "version"}' \
+          grep -Fq '"encrypted_key", "secdiscardable", "stretching", "version"};' \
             system/vold/FsCrypt.cpp
           grep -Fq '"stretching", 4, "none"' system/vold/FsCrypt.cpp
           grep -Fq '"secdiscardable", 1 << 14' system/vold/FsCrypt.cpp
