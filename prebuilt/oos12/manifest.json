@@ -72,6 +72,13 @@
       "source_repository": "arminask/android_device_oneplus_hotdog",
       "source_release": "OxygenOS F.22 / LineageOS 20 blob refresh"
     },
+    "vendor/lib64/libdrm.so": {
+      "bytes": 86528,
+      "sha256": "398b9f673b5a6b6cc1450058eebc9c3862ce05d735ce3dfbe17b7d3f6dbb22e1",
+      "source_commit": "8189a039c1c402d1bb0b433935f5b1fb72a81a27",
+      "source_path": "recovery/root/vendor/lib64/libdrm.so",
+      "source_repository": "arminask/android_device_oneplus_hotdog"
+    },
     "vendor/lib64/libops.so": {
       "bytes": 24448,
       "sha256": "9f59345ecb4e8957b30dc6eaeb50e25e494fdfd8fc6e0c780651fda9f6588dc5",

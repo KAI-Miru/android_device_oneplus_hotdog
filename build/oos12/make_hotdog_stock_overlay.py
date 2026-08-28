@@ -44,7 +44,10 @@ LOGICAL_ROWS = (
 STOCK_CREDENTIAL_HELPER = "system/bin/oplus_h40_credential_helper"
 STOCK_INTERPRETER = "/system/bin/linker64"
 APEX_POLICY_TOOL = "/system/bin/hotdog_apex_policy"
-APEX_POLICY_RULE = "allow kernel recovery fd use"
+APEX_POLICY_RULES = (
+    "allow kernel recovery fd use",
+    "allow kernel tmpfs file read",
+)
 
 EARLY_HEALTHD_START = "    start healthd\n"
 LEGACY_CPUACCT_MOUNT = "    mount cgroup none /acct cpuacct\n"
@@ -110,7 +113,7 @@ FIRMWARE_FILES = {
     ),
 }
 
-QSEE_PLUGIN_FILES = {
+QSEE_RUNTIME_FILES = {
     "libspl.so": (
         11_232,
         "6be8b4a2944d427398f0cc5ca2f6e11a70327f32c0d78ac209720b074f297d89",
@@ -119,9 +122,13 @@ QSEE_PLUGIN_FILES = {
         24_448,
         "9f59345ecb4e8957b30dc6eaeb50e25e494fdfd8fc6e0c780651fda9f6588dc5",
     ),
+    "libdrm.so": (
+        86_528,
+        "398b9f673b5a6b6cc1450058eebc9c3862ce05d735ce3dfbe17b7d3f6dbb22e1",
+    ),
 }
 
-QSEE_PLUGIN_NEEDED = {
+QSEE_RUNTIME_NEEDED = {
     "libspl.so": [
         "libcutils.so",
         "liblog.so",
@@ -139,6 +146,12 @@ QSEE_PLUGIN_NEEDED = {
         "libdrm.so",
         "libhidlbase.so",
         "libdisplayconfig.qti.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so",
+    ],
+    "libdrm.so": [
         "libc++.so",
         "libc.so",
         "libm.so",
@@ -405,18 +418,20 @@ on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:s
 """
     text = text[:configfs_start] + configfs + text[configfs_end:]
 
-    # The stock recovery policy blocks the kernel from using recovery's loop
-    # file descriptor during APEX image setup. Apply only that live rule
-    # synchronously before class_start default; the OEM policy stays byte-exact.
+    # The stock recovery policy blocks both the loop descriptor handoff and
+    # the kernel's read of its tmpfs-backed APEX image. Apply only those two
+    # live rules synchronously before class_start default; the OEM policy stays
+    # byte-exact.
     class_anchor = "    class_start default\n"
-    policy_command = (
-        f'    exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{APEX_POLICY_RULE}"\n'
+    policy_commands = "".join(
+        f'    exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{rule}"\n'
+        for rule in APEX_POLICY_RULES
     )
     if text.count(class_anchor) != 1:
         raise SystemExit("Hotdog stock default-class anchor is absent or duplicated")
-    if APEX_POLICY_TOOL in text or APEX_POLICY_RULE in text:
+    if APEX_POLICY_TOOL in text or any(rule in text for rule in APEX_POLICY_RULES):
         raise SystemExit("Hotdog stock init already contains the APEX policy hook")
-    return text.replace(class_anchor, policy_command + class_anchor, 1)
+    return text.replace(class_anchor, policy_commands + class_anchor, 1)
 
 
 def patch_qcom_usb(text: str) -> str:
@@ -773,26 +788,26 @@ def main() -> None:
     qsee_template = stock.get("system/lib64/libc.so")
     if qsee_template is None or qsee_template.mode & 0o170000 != 0o100000:
         raise SystemExit("Hotdog stock lacks a QSEE library metadata template")
-    for filename, (expected_bytes, expected_sha256) in QSEE_PLUGIN_FILES.items():
+    for filename, (expected_bytes, expected_sha256) in QSEE_RUNTIME_FILES.items():
         source_path = args.qsee_lib_dir / filename
         source_data = source_path.read_bytes()
         if len(source_data) != expected_bytes or sha256(source_data) != expected_sha256:
-            raise SystemExit(f"Hotdog QSEE plugin identity mismatch: {filename}")
+            raise SystemExit(f"Hotdog QSEE runtime identity mismatch: {filename}")
         if source_data[:4] != b"\x7fELF":
-            raise SystemExit(f"Hotdog QSEE plugin is not ELF: {filename}")
+            raise SystemExit(f"Hotdog QSEE runtime is not ELF: {filename}")
         try:
             parsed = elf_audit.Elf(source_path)
         except (OSError, elf_audit.ElfError) as exc:
-            raise SystemExit(f"cannot audit Hotdog QSEE plugin {filename}: {exc}") from exc
+            raise SystemExit(f"cannot audit Hotdog QSEE runtime {filename}: {exc}") from exc
         if parsed.bits != 64 or parsed.e_machine != 183 or parsed.soname != filename:
-            raise SystemExit(f"Hotdog QSEE plugin has the wrong ELF identity: {filename}")
-        if parsed.needed != QSEE_PLUGIN_NEEDED[filename]:
-            raise SystemExit(f"Hotdog QSEE plugin dependency set changed: {filename}")
+            raise SystemExit(f"Hotdog QSEE runtime has the wrong ELF identity: {filename}")
+        if parsed.needed != QSEE_RUNTIME_NEEDED[filename]:
+            raise SystemExit(f"Hotdog QSEE runtime dependency set changed: {filename}")
         for directory in ("system/lib64", "vendor/lib64"):
             target_name = f"{directory}/{filename}"
             if target_name in stock:
                 raise SystemExit(f"Hotdog stock unexpectedly contains {target_name}")
-            plugin = replace(
+            runtime_library = replace(
                 qsee_template,
                 name=target_name,
                 ino=next_ino,
@@ -800,12 +815,12 @@ def main() -> None:
                 data=source_data,
             )
             next_ino += 1
-            overlay.append(plugin)
+            overlay.append(runtime_library)
             records.append(
                 {
                     "kind": "addition",
                     "source": str(source_path.resolve()),
-                    "source_kind": "pinned_hotdog_a12_qsee_plugin",
+                    "source_kind": "pinned_hotdog_a12_qsee_runtime",
                     "target": target_name,
                     "target_sha256": expected_sha256,
                     "target_bytes": expected_bytes,

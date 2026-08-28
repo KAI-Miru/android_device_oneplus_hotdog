@@ -18,8 +18,9 @@ canonical invocation and pins every source input.
   ODM CommonDCS dependency.
 - `make_hotdog_runtime_overlay.py` combines the pinned stock-compatible
   Gatekeeper attestation library and F.22 display implementation with the
-  freshly built HIDL 2.0 interface, proves both strong-symbol closures, and
-  installs the live APEX policy tool.
+  freshly built HIDL 2.0 interface, proves those strong-symbol closures plus
+  the complete optional QSEE `libops.so` closure, and installs the live APEX
+  policy tool.
 - `merge_newc.py`, `gzip_deterministic.py`, and `repack_boot_v2.py` create the
   deterministic final boot payload.
 - the pinned Android 12.1 `avbtool` adds/verifies the explicit test footer.

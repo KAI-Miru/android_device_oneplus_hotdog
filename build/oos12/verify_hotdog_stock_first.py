@@ -159,11 +159,11 @@ def main() -> None:
     sys.path.insert(0, str(args.module_dir.resolve()))
     import newc  # noqa: PLC0415
     from make_hotdog_stock_overlay import (  # noqa: PLC0415
-        APEX_POLICY_RULE,
+        APEX_POLICY_RULES,
         APEX_POLICY_TOOL,
         FIRMWARE_FILES,
-        QSEE_PLUGIN_FILES,
-        QSEE_PLUGIN_NEEDED,
+        QSEE_RUNTIME_FILES,
+        QSEE_RUNTIME_NEEDED,
         STOCK_CREDENTIAL_HELPER,
         STOCK_INTERPRETER,
         TZDATA_BYTES,
@@ -375,7 +375,10 @@ def main() -> None:
         and displayconfig.get("target") == DISPLAYCONFIG_TARGET,
         "runtime manifest has the wrong displayconfig identity",
     )
-    require(apex_policy.get("rule") == APEX_POLICY_RULE, "runtime manifest has the wrong APEX rule")
+    require(
+        apex_policy.get("rules") == list(APEX_POLICY_RULES),
+        "runtime manifest has the wrong APEX rules",
+    )
     require(apex_policy.get("target") == POLICY_TARGET, "runtime manifest has the wrong APEX tool path")
     require(apex_policy.get("stock_sepolicy_preserved") is True, "runtime manifest does not preserve stock policy")
     require(
@@ -385,7 +388,7 @@ def main() -> None:
         "runtime manifest has the wrong gatekeeper attestation identity",
     )
     closures = runtime.get("stock_namespace_closures", {})
-    for label in ("gatekeeper", "secure_ui"):
+    for label in ("gatekeeper", "secure_ui", "qsee_ops"):
         require(label in closures, f"runtime manifest lacks {label} closure")
         require(closures[label].get("unresolved") == [], f"runtime manifest has unresolved {label} libraries")
         require(
@@ -406,6 +409,14 @@ def main() -> None:
         require(
             any(item.get("provider") == expected for item in closures["secure_ui"].get("providers", [])),
             f"Secure UI closure did not use {expected}",
+        )
+    for expected in (
+        "injected:system/lib64/libdrm.so",
+        "injected:system/lib64/libdisplayconfig.qti.so",
+    ):
+        require(
+            any(item.get("provider") == expected for item in closures["qsee_ops"].get("providers", [])),
+            f"QSEE ops closure did not use {expected}",
         )
     require_marker(
         credential_helper,
@@ -469,13 +480,21 @@ def main() -> None:
         b"on property:sys.usb.ffs.ready=1" not in qcom_usb,
         "Qualcomm init still owns an unconditional duplicate USB binding",
     )
-    policy_command = (
-        f'exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{APEX_POLICY_RULE}"'
-    ).encode()
-    require_marker(init, policy_command, "synchronous APEX policy hook")
+    policy_commands = [
+        f'exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{rule}"'.encode()
+        for rule in APEX_POLICY_RULES
+    ]
+    for policy_command in policy_commands:
+        require_marker(init, policy_command, "synchronous APEX policy hook")
+        require(
+            init.count(policy_command) == 1
+            and init.index(policy_command) < init.index(b"class_start default"),
+            "APEX policy rule is not installed exactly once before recovery starts",
+        )
     require(
-        init.index(policy_command) < init.index(b"class_start default"),
-        "APEX policy rule is not installed before recovery starts",
+        [init.index(command) for command in policy_commands]
+        == sorted(init.index(command) for command in policy_commands),
+        "APEX policy rules are installed in the wrong order",
     )
     for name in ("plat_file_contexts", "system/etc/selinux/plat_file_contexts"):
         require_marker(
@@ -573,12 +592,12 @@ def main() -> None:
     tzdata = require_data(final_index, TZDATA_PATH)
     require(len(tzdata) == TZDATA_BYTES, "wrong tzdata size")
     require(sha256(tzdata) == TZDATA_SHA256, "wrong tzdata digest")
-    for filename, (expected_bytes, expected_sha256) in QSEE_PLUGIN_FILES.items():
+    for filename, (expected_bytes, expected_sha256) in QSEE_RUNTIME_FILES.items():
         system_copy = require_data(final_index, f"system/lib64/{filename}")
         vendor_copy = require_data(final_index, f"vendor/lib64/{filename}")
-        require(system_copy == vendor_copy, f"QSEE plugin copies differ: {filename}")
-        require(len(system_copy) == expected_bytes, f"wrong QSEE plugin size: {filename}")
-        require(sha256(system_copy) == expected_sha256, f"wrong QSEE plugin digest: {filename}")
+        require(system_copy == vendor_copy, f"QSEE runtime copies differ: {filename}")
+        require(len(system_copy) == expected_bytes, f"wrong QSEE runtime size: {filename}")
+        require(sha256(system_copy) == expected_sha256, f"wrong QSEE runtime digest: {filename}")
         records = [
             record
             for record in stock_patch["records"]
@@ -587,14 +606,14 @@ def main() -> None:
                 f"vendor/lib64/{filename}",
             }
         ]
-        require(len(records) == 2, f"QSEE plugin manifest copies are incomplete: {filename}")
+        require(len(records) == 2, f"QSEE runtime manifest copies are incomplete: {filename}")
         require(
             all(
                 record.get("soname") == filename
-                and record.get("dt_needed") == QSEE_PLUGIN_NEEDED[filename]
+                and record.get("dt_needed") == QSEE_RUNTIME_NEEDED[filename]
                 for record in records
             ),
-            f"QSEE plugin ELF audit is missing or changed: {filename}",
+            f"QSEE runtime ELF audit is missing or changed: {filename}",
         )
 
     report = {
@@ -636,8 +655,9 @@ def main() -> None:
             "manifested_entries": len(runtime["records"]),
             "gatekeeper_closure_sonames": len(closures["gatekeeper"]["resolved_sonames"]),
             "secure_ui_closure_sonames": len(closures["secure_ui"]["resolved_sonames"]),
+            "qsee_ops_closure_sonames": len(closures["qsee_ops"]["resolved_sonames"]),
             "stock_sepolicy_sha256": STOCK_SEPOLICY_SHA256,
-            "apex_policy_rule": APEX_POLICY_RULE,
+            "apex_policy_rules": list(APEX_POLICY_RULES),
         },
         "avb": {
             "footer_version": f"{major}.{minor}",
@@ -661,12 +681,12 @@ def main() -> None:
             "commondcs_dependency_present_and_abi_matched": True,
             "gatekeeper_stock_namespace_closure_complete": True,
             "secure_ui_stock_namespace_closure_complete": True,
-            "stock_sepolicy_exact_and_apex_rule_synchronous": True,
+            "stock_sepolicy_exact_and_apex_rules_synchronous": True,
             "usb_configfs_routes_idempotent_with_mtp": True,
             "root_cgroup_configuration_present": True,
             "hotdog_haptics_firmware_complete": True,
             "timezone_database_present": True,
-            "qsee_optional_plugins_visible": True,
+            "qsee_optional_runtime_closure_complete": True,
             "irrelevant_stock_init_noise_removed": True,
             "inventory_audited_dynamic_ab_mount_tables": True,
             "avb_footer_structurally_valid": True,

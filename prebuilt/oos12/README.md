@@ -27,10 +27,13 @@ device tree at commit `8189a039c1c402d1bb0b433935f5b1fb72a81a27`. They are
 packaged directly into the final stock-first ramdisk so the kernel can load
 them before TWRP starts.
 
-`vendor/lib64/libspl.so` and `vendor/lib64/libops.so` come from that same
-pinned Hotdog A12 commit. The packager installs identical copies into the
-stock `system/lib64` and `vendor/lib64` search paths so optional QSEE listeners
-remain resolvable both before and after TWRP mounts the dynamic vendor image.
+`vendor/lib64/libspl.so`, `vendor/lib64/libops.so`, and the latter's
+`vendor/lib64/libdrm.so` dependency come from that same pinned Hotdog A12
+commit. The packager installs identical copies into the stock `system/lib64`
+and `vendor/lib64` search paths so optional QSEE listeners remain resolvable
+both before and after TWRP mounts the dynamic vendor image. CI proves the full
+`libops.so` SONAME and strong-symbol closure against the preserved OOS12
+namespace instead of checking only its direct dependency names.
 The compiled TWRP timezone database is also retained in the final ramdisk;
 this removes the early Bionic timezone lookup failures without substituting
 host data.
@@ -44,11 +47,13 @@ dependency edge before placing it in the stock linker namespace.
 
 `tools/hotdog-apex-policy` is the arm64 `magiskpolicy` executable from the
 official Magisk v30.7 APK, renamed for its single recovery-only purpose. The
-stock OOS12 `sepolicy` file is never replaced: init uses this tool once, before
-starting the default service class, to add `allow kernel recovery fd use` for
-the loop descriptor passed from recovery during APEX image setup. The source release, APK digest,
-executable digest, exact rule, and preserved stock-policy digest are pinned
-in the build manifests.
+stock OOS12 `sepolicy` file is never replaced: init uses this tool twice,
+synchronously before starting the default service class. It adds
+`allow kernel recovery fd use` for the loop descriptor passed from recovery
+and `allow kernel tmpfs file read` for the kernel's subsequent read of the
+tmpfs-backed APEX image. The source release, APK digest, executable digest,
+exact rules, and preserved stock-policy digest are pinned in the build
+manifests.
 Magisk is GPLv3 software; corresponding source is available from the v30.7
 release at https://github.com/topjohnwu/Magisk/releases/tag/v30.7.
 

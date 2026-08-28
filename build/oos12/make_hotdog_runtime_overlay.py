@@ -24,7 +24,10 @@ POLICY_TARGET = "system/bin/hotdog_apex_policy"
 POLICY_BYTES = 356_584
 POLICY_SHA256 = "9837db9db475eb74b6715f081768cb6a1f2fb5a2b2ac15755686062501bace27"
 POLICY_INTERPRETER = "/system/bin/linker64"
-POLICY_RULE = "allow kernel recovery fd use"
+POLICY_RULES = (
+    "allow kernel recovery fd use",
+    "allow kernel tmpfs file read",
+)
 POLICY_SOURCE_APK_SHA256 = "e0d32d2123532860f97123d927b1bb86c4e08e6fd8a48bfc6b5bee0afae9ebd5"
 POLICY_SOURCE_URL = "https://github.com/topjohnwu/Magisk/releases/tag/v30.7"
 
@@ -155,6 +158,7 @@ def main() -> None:
     parser.add_argument("--twrp-tree", type=Path, required=True)
     parser.add_argument("--gatekeeper-attestation", type=Path, required=True)
     parser.add_argument("--displayconfig", type=Path, required=True)
+    parser.add_argument("--qsee-lib-dir", type=Path, required=True)
     parser.add_argument("--policy-tool", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -164,6 +168,10 @@ def main() -> None:
     sys.path.insert(0, str(args.elf_audit_dir.resolve()))
     import newc  # noqa: PLC0415
     import elf_audit  # noqa: PLC0415
+    from make_hotdog_stock_overlay import (  # noqa: PLC0415
+        QSEE_RUNTIME_FILES,
+        QSEE_RUNTIME_NEEDED,
+    )
 
     stock_entries = newc.read(args.stock_cpio)
     stock = newc.index(stock_entries)
@@ -259,10 +267,31 @@ def main() -> None:
     display = injected["system/lib64/libdisplayconfig.qti.so"][1]
     require("vendor.display.config@2.0.so" in display.needed, "displayconfig no longer requires HIDL 2.0")
 
+    qsee_runtime = {}
+    for filename in ("libops.so", "libdrm.so"):
+        source_path = args.qsee_lib_dir / filename
+        expected_bytes, expected_sha256 = QSEE_RUNTIME_FILES[filename]
+        source_data = source_path.read_bytes()
+        require(
+            len(source_data) == expected_bytes and sha256(source_data) == expected_sha256,
+            f"QSEE runtime identity mismatch: {filename}",
+        )
+        parsed = elf(source_path, elf_audit)
+        require(parsed.soname == filename, f"unexpected QSEE runtime SONAME: {filename}")
+        require(
+            parsed.needed == QSEE_RUNTIME_NEEDED[filename],
+            f"QSEE runtime dependency set changed: {filename}",
+        )
+        target_name = f"system/lib64/{filename}"
+        require(target_name not in stock, f"stock recovery already contains {target_name}")
+        injected[target_name] = (source_path, parsed)
+        qsee_runtime[filename] = source_path
+
     providers = build_namespace(args.stock_tree, injected, elf_audit)
     closures = {
         "gatekeeper": resolve_closure(args.stock_tree / STOCK_GATEKEEPER, providers, elf_audit),
         "secure_ui": resolve_closure(args.stock_tree / STOCK_SECURE_UI, providers, elf_audit),
+        "qsee_ops": resolve_closure(qsee_runtime["libops.so"], providers, elf_audit),
     }
 
     template = stock.get("system/bin/toybox")
@@ -318,7 +347,7 @@ def main() -> None:
         },
         "apex_policy": {
             "mode": "synchronous_live_additive_before_default_class",
-            "rule": POLICY_RULE,
+            "rules": list(POLICY_RULES),
             "target": POLICY_TARGET,
             "tool_sha256": POLICY_SHA256,
             "tool_source_release": POLICY_SOURCE_URL,

@@ -55,7 +55,7 @@ jobs:
       BUILD_TARGET: recoveryimage
       RECOVERY_IMAGE_REL: out/target/product/hotdog/recovery.img
       RECOVERY_PARTITION_SIZE: "100663296"
-      OOS12_MANIFEST_SHA256: 15c103f8a262b36ae75be41c06123a32c95b5498d9c0c16f969093f5735e5cf9
+      OOS12_MANIFEST_SHA256: f2f4d48ac254ca47c53409127c1d69b7f1d934310d0d0b6584016dd46898b289
       PREBUILT_KERNEL_SHA256: 4b435ff44ed87d45a334f071d0af59f8579e8d0ac70ddd1bc4cdbf8ac39b2d6a
       PREBUILT_DTB_SHA256: 558825c788f86b64927ca1c254db8876d4d54a27d067db3ba8b53f1543a28618
       PREBUILT_DTBO_SHA256: 7187d1e64e79b1a9416b1fb332ef8d670cc59ad6dcacc6864db2ed2eec0fd5b7
@@ -70,6 +70,7 @@ jobs:
       HAPTIC_80MS_SHA256: 98fb90d52ddf8ce2e5825d057c67be0237d78e6c6df439c2d8fbceff136ab4ff
       QSEE_SPL_SHA256: 6be8b4a2944d427398f0cc5ca2f6e11a70327f32c0d78ac209720b074f297d89
       QSEE_OPS_SHA256: 9f59345ecb4e8957b30dc6eaeb50e25e494fdfd8fc6e0c780651fda9f6588dc5
+      QSEE_DRM_SHA256: 398b9f673b5a6b6cc1450058eebc9c3862ce05d735ce3dfbe17b7d3f6dbb22e1
       APEX_POLICY_TOOL_SHA256: 9837db9db475eb74b6715f081768cb6a1f2fb5a2b2ac15755686062501bace27
       AVBTOOL_SHA256: a9ec360fc5395db9b72d36c03af59ff984f4eefcc349dc32a556de7f8ed892ab
       BUILD_JOBS: "4"
@@ -305,6 +306,7 @@ jobs:
             "$HAPTIC_80MS_SHA256" "$DEVICE_PATH/prebuilt/oos12/vendor/firmware/80ms_RTP_170Hz.bin" \
             "$QSEE_SPL_SHA256" "$DEVICE_PATH/prebuilt/oos12/vendor/lib64/libspl.so" \
             "$QSEE_OPS_SHA256" "$DEVICE_PATH/prebuilt/oos12/vendor/lib64/libops.so" \
+            "$QSEE_DRM_SHA256" "$DEVICE_PATH/prebuilt/oos12/vendor/lib64/libdrm.so" \
             "$APEX_POLICY_TOOL_SHA256" "$DEVICE_PATH/prebuilt/oos12/tools/hotdog-apex-policy" \
             "$AVBTOOL_SHA256" "$DEVICE_PATH/build/oos12/avbtool_android-12.1.0_r4.py" \
             | sha256sum --check - \
@@ -648,6 +650,7 @@ jobs:
             --twrp-tree "$work/twrp-tree" \
             --gatekeeper-attestation "$prebuilt/system/lib64/libkeystore-attestation-application-id.so" \
             --displayconfig "$prebuilt/vendor/lib64/libdisplayconfig.qti.so" \
+            --qsee-lib-dir "$prebuilt/vendor/lib64" \
             --policy-tool "$prebuilt/tools/hotdog-apex-policy" \
             --output "$work/runtime-overlay.cpio" \
             --manifest "$work/runtime-overlay.json"
