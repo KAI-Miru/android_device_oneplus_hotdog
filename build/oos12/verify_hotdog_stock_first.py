@@ -125,15 +125,23 @@ def main() -> None:
     parser.add_argument("--stock-patch-manifest", type=Path, required=True)
     parser.add_argument("--private-manifest", type=Path, required=True)
     parser.add_argument("--cryptoeng-manifest", type=Path, required=True)
+    parser.add_argument("--runtime-manifest", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
 
     sys.path.insert(0, str(args.module_dir.resolve()))
     import newc  # noqa: PLC0415
     from make_hotdog_stock_overlay import (  # noqa: PLC0415
+        APEX_POLICY_RULE,
+        APEX_POLICY_TOOL,
         STOCK_CREDENTIAL_HELPER,
         STOCK_INTERPRETER,
         elf_interpreter,
+    )
+    from make_hotdog_runtime_overlay import (  # noqa: PLC0415
+        POLICY_SHA256,
+        POLICY_TARGET,
+        STOCK_SEPOLICY_SHA256,
     )
     from repack_boot_v2 import AVB_FOOTER_MAGIC, parse_boot_v2  # noqa: PLC0415
 
@@ -193,8 +201,10 @@ def main() -> None:
     stock_patch = load_json(args.stock_patch_manifest)
     private = load_json(args.private_manifest)
     cryptoeng = load_json(args.cryptoeng_manifest)
+    runtime = load_json(args.runtime_manifest)
     require(stock_patch["stock_cpio_sha256"] == sha256(args.stock_cpio.read_bytes()), "stock manifest input digest mismatch")
     require(private["stock_cpio_sha256"] == sha256(args.stock_cpio.read_bytes()), "private manifest stock digest mismatch")
+    require(runtime["stock_cpio_sha256"] == sha256(args.stock_cpio.read_bytes()), "runtime manifest stock digest mismatch")
 
     replacement_targets = {
         record["target"] for record in stock_patch["records"] if record["kind"] == "replacement"
@@ -213,6 +223,8 @@ def main() -> None:
         verify_record(final_index, record, "stock patch")
     for record in private["records"]:
         verify_record(final_index, record, "private TWRP")
+    for record in runtime["records"]:
+        verify_record(final_index, record, "stock runtime")
     verify_record(
         final_index,
         {
@@ -236,6 +248,7 @@ def main() -> None:
         "vendor/etc/vintf",
         "system/bin/hw/vendor.oplus.hardware.cryptoeng@1.0-service",
         "system/lib64/libdecrypt_recovery.so",
+        "sepolicy",
     ):
         require(name in stock_index, f"stock sentinel is absent from source CPIO: {name}")
         require(final_index[name] == stock_index[name], f"stock sentinel changed: {name}")
@@ -291,6 +304,45 @@ def main() -> None:
         "system/tw/bin/oplus_h40_credential_helper" not in final_index,
         "credential helper was also copied into the private TWRP runtime",
     )
+
+    for name in (
+        "system/lib64/libkeystore-attestation-application-id.so",
+        "system/lib64/libdisplayconfig.qti.so",
+        "system/lib64/vendor.display.config@2.0.so",
+        POLICY_TARGET,
+    ):
+        require_data(final_index, name)
+    require(
+        sha256(final_index[POLICY_TARGET].data) == POLICY_SHA256,
+        "wrong APEX policy tool in final ramdisk",
+    )
+    require(
+        sha256(final_index["sepolicy"].data) == STOCK_SEPOLICY_SHA256,
+        "stock OOS12 sepolicy was replaced instead of patched live",
+    )
+    apex_policy = runtime.get("apex_policy", {})
+    require(apex_policy.get("rule") == APEX_POLICY_RULE, "runtime manifest has the wrong APEX rule")
+    require(apex_policy.get("target") == POLICY_TARGET, "runtime manifest has the wrong APEX tool path")
+    require(apex_policy.get("stock_sepolicy_preserved") is True, "runtime manifest does not preserve stock policy")
+    closures = runtime.get("stock_namespace_closures", {})
+    for label in ("gatekeeper", "secure_ui"):
+        require(label in closures, f"runtime manifest lacks {label} closure")
+        require(closures[label].get("unresolved") == [], f"runtime manifest has unresolved {label} libraries")
+    require(
+        any(
+            item.get("provider") == "injected:system/lib64/libkeystore-attestation-application-id.so"
+            for item in closures["gatekeeper"].get("providers", [])
+        ),
+        "gatekeeper closure did not use the injected attestation library",
+    )
+    for expected in (
+        "injected:system/lib64/libdisplayconfig.qti.so",
+        "injected:system/lib64/vendor.display.config@2.0.so",
+    ):
+        require(
+            any(item.get("provider") == expected for item in closures["secure_ui"].get("providers", [])),
+            f"Secure UI closure did not use {expected}",
+        )
     require_marker(
         credential_helper,
         b"_Z21OplusCredentialVerifyNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEEi",
@@ -311,6 +363,20 @@ def main() -> None:
     require_marker(init, b"service recovery /system/tw/bin/r", "private recovery route")
     require_marker(init, b"service fastbootd /system/tw/bin/fastbootd", "private fastbootd route")
     require_marker(init, b"mkdir /tmp/misc/keystore/", "Keystore working directory")
+    policy_command = (
+        f'exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{APEX_POLICY_RULE}"'
+    ).encode()
+    require_marker(init, policy_command, "synchronous APEX policy hook")
+    require(
+        init.index(policy_command) < init.index(b"class_start default"),
+        "APEX policy rule is not installed before recovery starts",
+    )
+    for name in ("plat_file_contexts", "system/etc/selinux/plat_file_contexts"):
+        require_marker(
+            require_data(final_index, name),
+            b"/system/bin/hotdog_apex_policy u:object_r:system_file:s0",
+            f"APEX policy tool file context in {name}",
+        )
     linker_config = require_data(final_index, "system/etc/ld.config.txt")
     require_marker(linker_config, b"/system/tw/${LIB}:/system/${LIB}", "private linker search path")
     keystore_rc = require_data(final_index, "system/etc/init/keystore2.rc")
@@ -379,6 +445,13 @@ def main() -> None:
             "commondcs_sha256": cryptoeng["source_sha256"],
             "commondcs_symbol_link_verified": cryptoeng["symbol_import_export_verified"],
         },
+        "stock_runtime": {
+            "manifested_entries": len(runtime["records"]),
+            "gatekeeper_closure_sonames": len(closures["gatekeeper"]["resolved_sonames"]),
+            "secure_ui_closure_sonames": len(closures["secure_ui"]["resolved_sonames"]),
+            "stock_sepolicy_sha256": STOCK_SEPOLICY_SHA256,
+            "apex_policy_rule": APEX_POLICY_RULE,
+        },
         "avb": {
             "footer_version": f"{major}.{minor}",
             "algorithm": "NONE",
@@ -399,6 +472,9 @@ def main() -> None:
             "credential_helper_uses_stock_oos12_namespace": True,
             "oplus_decrypt_and_keystore_markers_present": True,
             "commondcs_dependency_present_and_abi_matched": True,
+            "gatekeeper_stock_namespace_closure_complete": True,
+            "secure_ui_stock_namespace_closure_complete": True,
+            "stock_sepolicy_exact_and_apex_rule_synchronous": True,
             "dynamic_ab_fstab_and_recovery_partition_present": True,
             "avb_footer_structurally_valid": True,
         },

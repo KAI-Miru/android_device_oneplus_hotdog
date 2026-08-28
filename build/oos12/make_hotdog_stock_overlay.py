@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 PRIVATE_CONTEXTS = (
+    "/system/bin/hotdog_apex_policy u:object_r:system_file:s0",
     "/system/tw/linker64          u:object_r:system_linker_exec:s0",
     "/system/tw/bin(/.*)?         u:object_r:system_file:s0",
     "/system/tw/lib64(/.*)?       u:object_r:system_lib_file:s0",
@@ -42,6 +43,8 @@ LOGICAL_ROWS = (
 
 STOCK_CREDENTIAL_HELPER = "system/bin/oplus_h40_credential_helper"
 STOCK_INTERPRETER = "/system/bin/linker64"
+APEX_POLICY_TOOL = "/system/bin/hotdog_apex_policy"
+APEX_POLICY_RULE = "allow kernel recovery fd use"
 
 
 def sha256(data: bytes) -> str:
@@ -105,7 +108,20 @@ def patch_init(text: str) -> str:
         raise SystemExit("Hotdog stock /tmp init anchor is absent or duplicated")
     if "mkdir /tmp/misc" in text or "mkdir /tmp/misc/keystore" in text:
         raise SystemExit("Hotdog stock init already contains TWRP Keystore2 directories")
-    return text.replace(anchor, anchor + additions, 1)
+    text = text.replace(anchor, anchor + additions, 1)
+
+    # The stock recovery policy lacks the one cross-domain fd permission that
+    # qti's loop worker needs. Apply only that live rule synchronously before
+    # class_start default launches recovery; the OEM policy file stays exact.
+    class_anchor = "    class_start default\n"
+    policy_command = (
+        f'    exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{APEX_POLICY_RULE}"\n'
+    )
+    if text.count(class_anchor) != 1:
+        raise SystemExit("Hotdog stock default-class anchor is absent or duplicated")
+    if APEX_POLICY_TOOL in text or APEX_POLICY_RULE in text:
+        raise SystemExit("Hotdog stock init already contains the APEX policy hook")
+    return text.replace(class_anchor, policy_command + class_anchor, 1)
 
 
 def patch_linker_config(text: str) -> str:

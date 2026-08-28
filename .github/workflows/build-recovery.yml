@@ -49,13 +49,14 @@ jobs:
       BUILD_TARGET: recoveryimage
       RECOVERY_IMAGE_REL: out/target/product/hotdog/recovery.img
       RECOVERY_PARTITION_SIZE: "100663296"
-      OOS12_MANIFEST_SHA256: 4dc2dc274dfe693766d2c63cc0e528a3ccd274fd9a748ae345026fac14692987
+      OOS12_MANIFEST_SHA256: b445f9f9d44b26e6caa8f06f7e540a375eb4111d744b6bba5a8d56d44b82ef60
       PREBUILT_KERNEL_SHA256: 4b435ff44ed87d45a334f071d0af59f8579e8d0ac70ddd1bc4cdbf8ac39b2d6a
       PREBUILT_DTB_SHA256: 558825c788f86b64927ca1c254db8876d4d54a27d067db3ba8b53f1543a28618
       PREBUILT_DTBO_SHA256: 7187d1e64e79b1a9416b1fb332ef8d670cc59ad6dcacc6864db2ed2eec0fd5b7
       STOCK_RAMDISK_GZIP_SHA256: 97449f9d692985bd44305bd23fe59db34a3d26711d6aea25f4dc4b8398546aed
       STOCK_RAMDISK_RAW_SHA256: 7fe6263a5cc654b363ef010a3b140ea404393dbf992ca0580156357d6e7c46d0
       COMMONDCS_SHA256: b626c790281f66279136437ca7065b5c0318462407c11c2a6ec2af04dc35e5a6
+      APEX_POLICY_TOOL_SHA256: 9837db9db475eb74b6715f081768cb6a1f2fb5a2b2ac15755686062501bace27
       AVBTOOL_SHA256: a9ec360fc5395db9b72d36c03af59ff984f4eefcc349dc32a556de7f8ed892ab
       BUILD_JOBS: "4"
       LC_ALL: C
@@ -166,6 +167,7 @@ jobs:
           (
             cd "$patch_dir"
             sha256sum --check <<'EOF'
+          8cef6cf7c0c7ec6f9fe14d990c2fee488bfab78135efe40313723ab1c9c8e412  apex-loop.patch
           bc1398b4901403a33d7ad80a171ba95974ba2c938558bc10b69ff350e8850895  binder.patch
           29ef6a93de27f17dfb741cc3bf93eaf063cefacd739a8625e1c9b8e3f668156c  keystore-service.patch
           be435c026ea0af8d979c71dde853f6920d68bab7a44a40a12b810e67da86a673  openaes.patch
@@ -184,6 +186,7 @@ jobs:
           }
 
           apply_patch bootable/recovery "$patch_dir/openaes.patch"
+          apply_patch bootable/recovery "$patch_dir/apex-loop.patch"
           apply_patch bootable/recovery "$patch_dir/recovery.patch"
           apply_patch bootable/recovery "$patch_dir/keystore-service.patch"
           apply_patch system/core "$patch_dir/task-profiles.patch"
@@ -197,7 +200,7 @@ jobs:
             git -C "$repository" diff --cached --check
           done
 
-          expected_recovery_paths=$'Android.mk\netc/init/keystore2.rc\noplus_h40_credential_client.cpp\noplus_h40_credential_client.hpp\noplus_h40_credential_helper.cpp\noplus_h40_credential_protocol.hpp\noplus_h40_decrypt.cpp\noplus_h40_decrypt.hpp\npartitionmanager.cpp\nprebuilt/Android.mk'
+          expected_recovery_paths=$'Android.mk\netc/init/keystore2.rc\noplus_h40_credential_client.cpp\noplus_h40_credential_client.hpp\noplus_h40_credential_helper.cpp\noplus_h40_credential_protocol.hpp\noplus_h40_decrypt.cpp\noplus_h40_decrypt.hpp\npartitionmanager.cpp\nprebuilt/Android.mk\ntwrpApex.cpp'
           test "$(git -C bootable/recovery diff --cached --name-only | LC_ALL=C sort)" = \
             "$expected_recovery_paths"
           test "$(git -C system/core diff --cached --name-only)" = \
@@ -223,6 +226,11 @@ jobs:
           grep -Fq 'H40_RECOVERY_BINDER_STABILITY_V0_V52' \
             frameworks/native/libs/binder/Parcel.cpp
           grep -Fq '    disabled' bootable/recovery/etc/init/keystore2.rc
+          grep -Fq 'LO_FLAGS_READ_ONLY | LO_FLAGS_AUTOCLEAR' \
+            bootable/recovery/twrpApex.cpp
+          grep -Fq 'makedev(7, num)' bootable/recovery/twrpApex.cpp
+          grep -Fq 'allow kernel recovery:fd { use };' \
+            bootable/recovery/sepolicy/twrp.te
           if grep -Fq 'on late-init' bootable/recovery/etc/init/keystore2.rc ||
              grep -Fq 'static std::mutex key_upgrade_lock;' system/vold/KeyStorage.cpp ||
              grep -Fq 'static std::vector<std::string> key_dirs_to_commit;' \
@@ -272,6 +280,7 @@ jobs:
             "$PREBUILT_DTBO_SHA256" "$DEVICE_PATH/prebuilt/oos12/recovery-dtbo.img" \
             "$STOCK_RAMDISK_GZIP_SHA256" "$DEVICE_PATH/prebuilt/oos12/ramdisk-stock.cpio.gz" \
             "$COMMONDCS_SHA256" "$DEVICE_PATH/prebuilt/oos12/odm/lib64/vendor.oplus.hardware.commondcs@1.0.so" \
+            "$APEX_POLICY_TOOL_SHA256" "$DEVICE_PATH/prebuilt/oos12/tools/hotdog-apex-policy" \
             "$AVBTOOL_SHA256" "$DEVICE_PATH/build/oos12/avbtool_android-12.1.0_r4.py" \
             | sha256sum --check - \
             | tee "$GITHUB_WORKSPACE/prebuilt-source-check.txt"
@@ -601,12 +610,24 @@ jobs:
             --source "$prebuilt/odm/lib64/vendor.oplus.hardware.commondcs@1.0.so" \
             --output "$work/cryptoeng-overlay.cpio" \
             --manifest "$work/cryptoeng-overlay.json"
+          chmod 0755 "$prebuilt/tools/hotdog-apex-policy"
+          python3 "$tools/make_hotdog_runtime_overlay.py" \
+            --newc-dir "$tools" \
+            --elf-audit-dir "$tools" \
+            --stock-cpio "$work/stock.cpio" \
+            --twrp-cpio "$work/twrp.cpio" \
+            --stock-tree "$work/stock-tree" \
+            --twrp-tree "$work/twrp-tree" \
+            --policy-tool "$prebuilt/tools/hotdog-apex-policy" \
+            --output "$work/runtime-overlay.cpio" \
+            --manifest "$work/runtime-overlay.json"
 
           python3 "$tools/merge_newc.py" \
             --base "$work/stock.cpio" \
             --overlay "$work/stock-overlay.cpio" \
             --overlay "$work/private-overlay.cpio" \
             --overlay "$work/cryptoeng-overlay.cpio" \
+            --overlay "$work/runtime-overlay.cpio" \
             --output "$work/hybrid.cpio" \
             --report "$work/merge.json"
           python3 "$tools/gzip_deterministic.py" \
@@ -647,6 +668,7 @@ jobs:
             --stock-patch-manifest "$work/stock-overlay.json" \
             --private-manifest "$work/private-overlay.json" \
             --cryptoeng-manifest "$work/cryptoeng-overlay.json" \
+            --runtime-manifest "$work/runtime-overlay.json" \
             --report "$work/verification.json"
 
           output_name='hotdog-OOS12-stock-first-TWRP-ColorOS-DYNAMIC-IDENTITY-TEST.img'
@@ -657,6 +679,7 @@ jobs:
             "$work/stock-overlay.json" \
             "$work/private-overlay.json" \
             "$work/cryptoeng-overlay.json" \
+            "$work/runtime-overlay.json" \
             "$work/merge.json" \
             "$work/repack.json" \
             "$work/avb-info.txt" \
