@@ -172,7 +172,7 @@ jobs:
           c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e  recovery.patch
           0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523  security.patch
           452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364  task-profiles.patch
-          bf99fa1bcd3c9c73fd94d0a554898df9711332b2dea87e8566a01f6f740be394  vold.patch
+          5a0596b99fcef595695b42eb35ef84eb2d7b84784e5dceb473a6543d8d427a06  vold.patch
           EOF
           ) | tee "$GITHUB_WORKSPACE/patch-checksums.txt"
 
@@ -211,6 +211,10 @@ jobs:
           grep -Fq '/dev/block/bootdevice/by-name/system' \
             bootable/recovery/oplus_h40_decrypt.cpp
           grep -Fq 'Decrypt_User_H40_Modern' system/vold/Decrypt.cpp
+          grep -Fq '{"encrypted_key", "secdiscardable", "version"}' \
+            system/vold/FsCrypt.cpp
+          grep -Fq '"secdiscardable", 1 << 14' system/vold/FsCrypt.cpp
+          grep -Fq '[H40 V54 CURRENT]' system/vold/FsCrypt.cpp
           grep -Fq 'GetKeyUpgradeLock()' system/vold/KeyStorage.cpp
           grep -Fq 'GetKeyDirsToCommit()' system/vold/KeyStorage.cpp
           grep -Fq 'malformed pKMblob prefix' system/vold/Keymaster.cpp

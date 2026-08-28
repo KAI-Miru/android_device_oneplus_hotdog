@@ -7,6 +7,11 @@ snapshots. The final adapter includes parent-KeyStorage handling, malformed
 stability bridge, credential-time Keystore2 startup, and universal mounted
 dynamic/static system-identity discovery.
 
+Hotdog's current user-0 CE key uses the ColorOS direct-AES form with Android's
+16 KiB `secdiscardable`. The current-only installer validates that exact
+three-file layout before each read and still rejects Keymaster blobs, links,
+extra files, and every key-directory mutation path.
+
 The adapter is only one half of the result. `build/oos12/` packages its output
 as a private runtime inside the exact Hotdog OxygenOS 12 stock recovery
 ramdisk. This preserves OnePlus init, VINTF, crypto services, SELinux material,
@@ -23,7 +28,7 @@ TWRP namespaces.
 | `recovery.patch` | `bootable/recovery` | `c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e` |
 | `security.patch` | `system/security` | `0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523` |
 | `task-profiles.patch` | `system/core` | `452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364` |
-| `vold.patch` | `system/vold` | `bf99fa1bcd3c9c73fd94d0a554898df9711332b2dea87e8566a01f6f740be394` |
+| `vold.patch` | `system/vold` | `5a0596b99fcef595695b42eb35ef84eb2d7b84784e5dceb473a6543d8d427a06` |
 
 The workflow verifies each checksum before applying it, checks the expected
 changed path set, rejects legacy unsafe fallbacks, audits the linked ELFs, and

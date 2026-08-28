@@ -272,6 +272,11 @@ def main() -> None:
     require(dlopen.get("dt_needed_closure_count") == len(dlopen.get("dependency_targets", [])), "decrypt closure count mismatch")
 
     require_marker(require_data(final_index, "system/tw/bin/recovery"), b"[H40 V51 PARENT]", "ColorOS adapter marker")
+    require_marker(
+        require_data(final_index, "system/tw/bin/recovery"),
+        b"[H40 V54 CURRENT]",
+        "ColorOS secdiscardable CE-layout marker",
+    )
     credential_helper = require_data(final_index, STOCK_CREDENTIAL_HELPER)
     require(credential_helper[:4] == b"\x7fELF", "stock credential helper is not ELF")
     require(

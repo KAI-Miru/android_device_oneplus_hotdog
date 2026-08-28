@@ -580,7 +580,7 @@ index 7505e56..69cc8d3 100644
      } else {
          for (auto const path : get_ce_key_paths(get_ce_key_directory_path(user_id))) {
              success &= android::vold::destroyKey(path);
-@@ -661,18 +703,198 @@ static std::optional<android::vold::KeyAuthentication> authentication_from_hex(
+@@ -661,18 +703,205 @@ static std::optional<android::vold::KeyAuthentication> authentication_from_hex(
      std::string secret;
      if (!parse_hex(secret_hex, &secret)) return std::optional<android::vold::KeyAuthentication>();
      if (secret.empty()) {
@@ -713,11 +713,16 @@ index 7505e56..69cc8d3 100644
 +        return false;
 +    }
 +    if (!h40_open_directory_at(user0.get(), "current", &current) ||
-+        !h40_directory_has_exact_entries(current.get(), {"encrypted_key", "version"},
-+                                         "/data/misc/vold/user_keys/ce/0/current")) {
++        !h40_directory_has_exact_entries(
++                current.get(), {"encrypted_key", "secdiscardable", "version"},
++                "/data/misc/vold/user_keys/ce/0/current")) {
 +        return false;
 +    }
 +    if (!h40_validate_regular_file_at(current.get(), "version", 1, "1")) return false;
++    // ColorOS retains Android's standard 16 KiB secdiscardable even though
++    // the nonempty SP-derived authentication selects direct AES below.
++    if (!h40_validate_regular_file_at(current.get(), "secdiscardable", 1 << 14,
++                                       nullptr)) return false;
 +    // 12-byte GCM nonce + 64-byte fscrypt key + 16-byte GCM tag.
 +    if (!h40_validate_regular_file_at(current.get(), "encrypted_key", 92, nullptr)) return false;
 +    return true;
@@ -747,10 +752,12 @@ index 7505e56..69cc8d3 100644
 +        return false;
 +    }
 +
-+    // Re-run the no-follow shape guard immediately before retrieveKey().  With
-+    // nonempty authentication and no Keymaster/secdiscardable files, the exact
-+    // accepted layout can take only KeyStorage's read-only direct AES-GCM path.
++    // Re-run the no-follow shape guard immediately before retrieveKey().  A
++    // nonempty authentication forces KeyStorage's read-only direct AES-GCM
++    // path; the validated secdiscardable hash is part of its application ID.
++    // Keymaster blobs remain forbidden by the exact-entry check above.
 +    if (!validate_h40_modern_user0_ce_layout()) return false;
++    LOG(INFO) << "[H40 V54 CURRENT] validated ColorOS 16KiB secdiscardable direct-AES layout";
 +    const std::string key_path =
 +            get_ce_key_current_path(get_ce_key_directory_path(kUser));
 +    KeyBuffer ce_key;
@@ -781,7 +788,7 @@ index 7505e56..69cc8d3 100644
  }
  
  static bool read_or_create_volkey(const std::string& misc_path, const std::string& volume_uuid,
-@@ -709,7 +931,7 @@ static bool destroy_volkey(const std::string& misc_path, const std::string& volu
+@@ -709,7 +938,7 @@ static bool destroy_volkey(const std::string& misc_path, const std::string& volu
  static bool fscrypt_rewrap_user_key(userid_t user_id, int serial,
                                      const android::vold::KeyAuthentication& retrieve_auth,
                                      const android::vold::KeyAuthentication& store_auth) {
@@ -790,7 +797,7 @@ index 7505e56..69cc8d3 100644
      auto const directory_path = get_ce_key_directory_path(user_id);
      KeyBuffer ce_key;
      std::string ce_key_current_path = get_ce_key_current_path(directory_path);
-@@ -718,7 +940,7 @@ static bool fscrypt_rewrap_user_key(userid_t user_id, int serial,
+@@ -718,7 +947,7 @@ static bool fscrypt_rewrap_user_key(userid_t user_id, int serial,
          // TODO(147732812): Remove this once Locksettingservice is fixed.
          // Currently it calls fscrypt_clear_user_key_auth with a secret when lockscreen is
          // changed from swipe to none or vice-versa
@@ -799,7 +806,7 @@ index 7505e56..69cc8d3 100644
          LOG(INFO) << "Successfully retrieved key with empty auth";
      } else {
          LOG(ERROR) << "Failed to retrieve key for user " << user_id;
-@@ -727,7 +949,7 @@ static bool fscrypt_rewrap_user_key(userid_t user_id, int serial,
+@@ -727,7 +956,7 @@ static bool fscrypt_rewrap_user_key(userid_t user_id, int serial,
      auto const paths = get_ce_key_paths(directory_path);
      std::string ce_key_path;
      if (!get_ce_key_new_path(directory_path, paths, &ce_key_path)) return false;
@@ -808,7 +815,7 @@ index 7505e56..69cc8d3 100644
          return false;
      return true;
  }
-@@ -737,7 +959,7 @@ bool fscrypt_add_user_key_auth(userid_t user_id, int serial, const std::string&
+@@ -737,7 +966,7 @@ bool fscrypt_add_user_key_auth(userid_t user_id, int serial, const std::string&
      if (!fscrypt_is_native()) return true;
      auto auth = authentication_from_hex(secret_hex);
      if (!auth) return false;
@@ -817,7 +824,7 @@ index 7505e56..69cc8d3 100644
  }
  
  bool fscrypt_clear_user_key_auth(userid_t user_id, int serial, const std::string& secret_hex) {
-@@ -745,13 +967,13 @@ bool fscrypt_clear_user_key_auth(userid_t user_id, int serial, const std::string
+@@ -745,13 +974,13 @@ bool fscrypt_clear_user_key_auth(userid_t user_id, int serial, const std::string
      if (!fscrypt_is_native()) return true;
      auto auth = authentication_from_hex(secret_hex);
      if (!auth) return false;
@@ -833,7 +840,7 @@ index 7505e56..69cc8d3 100644
      auto const directory_path = get_ce_key_directory_path(user_id);
      auto const paths = get_ce_key_paths(directory_path);
      if (paths.empty()) {
-@@ -764,7 +986,7 @@ bool fscrypt_fixate_newest_user_key_auth(userid_t user_id) {
+@@ -764,7 +993,7 @@ bool fscrypt_fixate_newest_user_key_auth(userid_t user_id) {
  
  std::vector<int> fscrypt_get_unlocked_users() {
      std::vector<int> user_ids;
@@ -842,7 +849,7 @@ index 7505e56..69cc8d3 100644
          user_ids.push_back(it.first);
      }
      return user_ids;
-@@ -774,7 +996,7 @@ std::vector<int> fscrypt_get_unlocked_users() {
+@@ -774,7 +1003,7 @@ std::vector<int> fscrypt_get_unlocked_users() {
  bool fscrypt_unlock_user_key(userid_t user_id, int serial, const std::string& secret_hex) {
      LOG(INFO) << "fscrypt_unlock_user_key " << user_id << " serial=" << serial;
      if (fscrypt_is_native()) {
@@ -851,7 +858,7 @@ index 7505e56..69cc8d3 100644
              LOG(WARNING) << "Tried to unlock already-unlocked key for user " << user_id;
              return true;
          }
-@@ -821,7 +1043,7 @@ bool fscrypt_lock_user_key(userid_t user_id) {
+@@ -821,7 +1050,7 @@ bool fscrypt_lock_user_key(userid_t user_id) {
  static bool prepare_subdirs(const std::string& action, const std::string& volume_uuid,
                              userid_t user_id, int flags) {
      if (0 != android::vold::ForkExecvp(
@@ -860,7 +867,7 @@ index 7505e56..69cc8d3 100644
                                            std::to_string(user_id), std::to_string(flags)})) {
          LOG(ERROR) << "vold_prepare_subdirs failed";
          return false;
-@@ -864,7 +1086,7 @@ bool fscrypt_prepare_user_storage(const std::string& volume_uuid, userid_t user_
+@@ -864,7 +1093,7 @@ bool fscrypt_prepare_user_storage(const std::string& volume_uuid, userid_t user_
          if (fscrypt_is_native()) {
              EncryptionPolicy de_policy;
              if (volume_uuid.empty()) {
@@ -869,7 +876,7 @@ index 7505e56..69cc8d3 100644
                  if (!EnsurePolicy(de_policy, system_de_path)) return false;
                  if (!EnsurePolicy(de_policy, misc_de_path)) return false;
                  if (!EnsurePolicy(de_policy, vendor_de_path)) return false;
-@@ -902,7 +1124,7 @@ bool fscrypt_prepare_user_storage(const std::string& volume_uuid, userid_t user_
+@@ -902,7 +1131,7 @@ bool fscrypt_prepare_user_storage(const std::string& volume_uuid, userid_t user_
          if (fscrypt_is_native()) {
              EncryptionPolicy ce_policy;
              if (volume_uuid.empty()) {
