@@ -13,7 +13,9 @@ canonical invocation and pins every source input.
   the credential helper unchanged in `/system/bin` so it uses the stock OOS12
   namespace.
 - `make_private_twrp_overlay.py`, `h40_dlopen.py`, and `elf_audit.py` package
-  the isolated TWRP runtime and prove its ELF/`dlopen` dependency closure.
+  the isolated TWRP runtime, its Bash/Nano/ZIP/`sgdisk` feature bundles,
+  generated `/file_contexts`, shell configuration, and terminal database, then
+  prove the ELF/`dlopen` dependency closure and every original-path asset.
 - `make_hotdog_cryptoeng_overlay.py` verifies and installs the exact Hotdog
   ODM CommonDCS dependency.
 - `make_hotdog_runtime_overlay.py` combines the pinned stock-compatible
@@ -28,5 +30,8 @@ canonical invocation and pins every source input.
   manifests, decryption markers, fstab, boot components, partition size, and
   AVB structure.
 
-The scripts fail closed on missing paths, hash drift, duplicate CPIO entries,
-unexpected firmware layout, unresolved symbols, or component changes.
+The stock overlay also restores `/bin`, `/sbin/sh`, and the fixed
+`/etc/mke2fs.conf` path without replacing the stock `/etc` tree. The scripts
+fail closed on missing paths, hash drift, incomplete feature bundles, duplicate
+CPIO entries, unexpected firmware layout, unresolved symbols, or component
+changes.

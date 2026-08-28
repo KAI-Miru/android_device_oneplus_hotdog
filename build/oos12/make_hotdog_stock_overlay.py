@@ -45,6 +45,10 @@ STOCK_CREDENTIAL_HELPER = "system/bin/oplus_h40_credential_helper"
 STOCK_INTERPRETER = "/system/bin/linker64"
 LEGACY_INSTALLER_SHELL = "sbin/sh"
 LEGACY_INSTALLER_SHELL_TARGET = b"/system/bin/sh"
+ROOT_BIN_LINK = "bin"
+ROOT_BIN_LINK_TARGET = b"/system/bin"
+MKE2FS_CONFIG_SOURCE = "system/etc/mke2fs.conf"
+MKE2FS_CONFIG_TARGET = "etc/mke2fs.conf"
 APEX_POLICY_TOOL = "/system/bin/hotdog_apex_policy"
 APEX_POLICY_RULES = (
     "allow kernel recovery fd use",
@@ -56,6 +60,18 @@ LEGACY_CPUACCT_MOUNT = "    mount cgroup none /acct cpuacct\n"
 SYSTEM_BACKGROUND_WRITEPID = "    writepid /dev/cpuset/system-background/tasks\n"
 FOREGROUND_WRITEPID = "    writepid /dev/cpuset/foreground/tasks\n"
 INVALID_POWERCTL_ACTION = "on property:sys.powerctl=*\n   powerctl ${sys.powerctl}\n\n"
+
+PHOENIX_START_BLOCK = """    #ifdef OPLUS_FEATURE_PHOENIX_RECOVERY
+    start phoenix_recovery
+    #endif
+"""
+PHOENIX_SERVICE_BLOCK = """#ifdef OPLUS_FEATURE_PHOENIX_RECOVERY
+service phoenix_recovery /system/bin/phoenix_recovery
+    critical
+    seclabel u:r:recovery:s0
+#endif /* OPLUS_FEATURE_PHOENIX_RECOVERY */
+
+"""
 
 GATEKEEPERD_SERVICE = """service gatekeeperd /system/bin/gatekeeperd /data/misc/gatekeeper
     seclabel u:r:recovery:s0
@@ -235,6 +251,8 @@ def patch_init(text: str) -> str:
         raise SystemExit("unexpected Hotdog stock recovery/fastbootd service declarations")
     text = recovery.sub("service recovery /system/tw/bin/r", text)
     text = fastbootd.sub("service fastbootd /system/tw/bin/fastbootd", text)
+    text = replace_once(text, PHOENIX_START_BLOCK, "", "impossible Phoenix recovery start")
+    text = replace_once(text, PHOENIX_SERVICE_BLOCK, "", "impossible Phoenix recovery service")
 
     anchor = "    chown root shell /tmp\n    chmod 0775 /tmp\n\n"
     additions = "    mkdir /tmp/misc\n    mkdir /tmp/misc/keystore/\n"
@@ -712,6 +730,54 @@ def main() -> None:
             "entry_type": "symlink",
             "symlink_target": LEGACY_INSTALLER_SHELL_TARGET.decode("ascii"),
             "purpose": "legacy_recovery_zip_installer",
+        }
+    )
+
+    system_bin = stock.get(ROOT_BIN_LINK_TARGET.lstrip(b"/").decode("ascii"))
+    if system_bin is None or system_bin.mode & 0o170000 != 0o040000:
+        raise SystemExit("Hotdog stock lacks the /system/bin directory")
+    if ROOT_BIN_LINK in stock:
+        raise SystemExit("Hotdog stock unexpectedly already contains /bin")
+    root_bin = newc.regular_file(
+        ROOT_BIN_LINK,
+        ROOT_BIN_LINK_TARGET,
+        mode=0o120777,
+        ino=next_ino,
+    )
+    next_ino += 1
+    overlay.append(root_bin)
+    records.append(
+        {
+            "kind": "addition",
+            "source": "stock:system/bin",
+            "target": ROOT_BIN_LINK,
+            "target_sha256": sha256(root_bin.data),
+            "target_bytes": len(root_bin.data),
+            "entry_type": "symlink",
+            "symlink_target": ROOT_BIN_LINK_TARGET.decode("ascii"),
+            "purpose": "root_bin_compatibility",
+        }
+    )
+
+    etc = stock.get("etc")
+    if etc is None or etc.mode & 0o170000 != 0o040000:
+        raise SystemExit("Hotdog stock lacks the root /etc directory")
+    mke2fs_source = stock.get(MKE2FS_CONFIG_SOURCE)
+    if mke2fs_source is None or mke2fs_source.mode & 0o170000 != 0o100000 or not mke2fs_source.data:
+        raise SystemExit("Hotdog stock lacks a valid /system/etc/mke2fs.conf")
+    if MKE2FS_CONFIG_TARGET in stock:
+        raise SystemExit("Hotdog stock unexpectedly already contains /etc/mke2fs.conf")
+    mke2fs_config = replace(mke2fs_source, name=MKE2FS_CONFIG_TARGET, ino=next_ino, nlink=1)
+    next_ino += 1
+    overlay.append(mke2fs_config)
+    records.append(
+        {
+            "kind": "addition",
+            "source": f"stock:{MKE2FS_CONFIG_SOURCE}",
+            "target": MKE2FS_CONFIG_TARGET,
+            "target_sha256": sha256(mke2fs_config.data),
+            "target_bytes": len(mke2fs_config.data),
+            "purpose": "mke2fs_fixed_path_config",
         }
     )
 

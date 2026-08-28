@@ -638,6 +638,7 @@ jobs:
             --required-helper system/bin/bu \
             --required-helper system/bin/pigz \
             --required-helper system/bin/unzip \
+            --required-helper system/bin/sgdisk \
             --required-helper system/bin/keystore2 \
             --required-helper system/bin/keystore_cli_v2
           python3 "$tools/make_hotdog_cryptoeng_overlay.py" \

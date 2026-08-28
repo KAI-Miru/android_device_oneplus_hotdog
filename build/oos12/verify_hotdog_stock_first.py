@@ -35,6 +35,13 @@ def require_marker(blob: bytes, marker: bytes, label: str) -> None:
     require(marker in blob, f"missing {label}: {marker!r}")
 
 
+def require_symlink(index, name: str, target: bytes, label: str) -> None:
+    entry = index.get(name)
+    require(entry is not None, f"missing {label}: /{name}")
+    require(entry.mode & 0o170000 == 0o120000, f"{label} is not a symlink: /{name}")
+    require(entry.data == target, f"{label} has the wrong target: /{name}")
+
+
 def verify_record(index, record: dict, label: str) -> None:
     target = record["target"]
     require(target in index, f"missing {label} target: {target}")
@@ -164,8 +171,12 @@ def main() -> None:
         FIRMWARE_FILES,
         LEGACY_INSTALLER_SHELL,
         LEGACY_INSTALLER_SHELL_TARGET,
+        MKE2FS_CONFIG_SOURCE,
+        MKE2FS_CONFIG_TARGET,
         QSEE_RUNTIME_FILES,
         QSEE_RUNTIME_NEEDED,
+        ROOT_BIN_LINK,
+        ROOT_BIN_LINK_TARGET,
         STOCK_CREDENTIAL_HELPER,
         STOCK_INTERPRETER,
         TZDATA_BYTES,
@@ -292,6 +303,32 @@ def main() -> None:
         and installer_shell_records[0].get("purpose") == "legacy_recovery_zip_installer",
         "legacy ZIP installer shell route is not audited in the stock overlay manifest",
     )
+    require_symlink(final_index, ROOT_BIN_LINK, ROOT_BIN_LINK_TARGET, "root /bin compatibility link")
+    root_bin_records = [
+        record for record in stock_patch["records"] if record.get("target") == ROOT_BIN_LINK
+    ]
+    require(
+        len(root_bin_records) == 1
+        and root_bin_records[0].get("entry_type") == "symlink"
+        and root_bin_records[0].get("symlink_target") == ROOT_BIN_LINK_TARGET.decode("ascii")
+        and root_bin_records[0].get("purpose") == "root_bin_compatibility",
+        "root /bin compatibility link is not audited in the stock overlay manifest",
+    )
+    require_data(final_index, MKE2FS_CONFIG_SOURCE)
+    require_data(final_index, MKE2FS_CONFIG_TARGET)
+    require(
+        final_index[MKE2FS_CONFIG_TARGET].data == final_index[MKE2FS_CONFIG_SOURCE].data,
+        "root mke2fs configuration differs from /system/etc/mke2fs.conf",
+    )
+    mke2fs_records = [
+        record for record in stock_patch["records"] if record.get("target") == MKE2FS_CONFIG_TARGET
+    ]
+    require(
+        len(mke2fs_records) == 1
+        and mke2fs_records[0].get("source") == f"stock:{MKE2FS_CONFIG_SOURCE}"
+        and mke2fs_records[0].get("purpose") == "mke2fs_fixed_path_config",
+        "root mke2fs configuration is not audited in the stock overlay manifest",
+    )
 
     for record in stock_patch["records"]:
         verify_record(final_index, record, "stock patch")
@@ -331,6 +368,10 @@ def main() -> None:
         "system/tw/bin/recovery",
         "system/tw/bin/keystore2",
         "system/tw/bin/keystore_cli_v2",
+        "system/tw/bin/bash",
+        "system/tw/bin/nano",
+        "system/tw/bin/sgdisk",
+        "system/tw/bin/zip",
         "system/tw/lib64/libbinder.so",
         "system/tw/lib64/libdecrypt_recovery.so",
         "system/tw/lib64/libcryptfs_hw.so",
@@ -340,6 +381,49 @@ def main() -> None:
     )
     for name in required_private:
         require_data(final_index, name)
+
+    routes = {record["source"]: record for record in private["helper_routes"]}
+    for helper in ("bash", "nano", "sgdisk", "zip"):
+        public = f"system/bin/{helper}"
+        private_target = f"system/tw/bin/{helper}"
+        require(public in routes, f"required helper route is unmanifested: /{public}")
+        require(routes[public]["private_target"] == private_target, f"wrong private route for /{public}")
+        require(public in final_index, f"required public helper path is missing: /{public}")
+        if routes[public]["routing"] == "stock_shell_exec_private":
+            expected = ("#!/system/bin/sh\n" f'exec /system/tw/bin/{helper} "$@"\n').encode("ascii")
+            require(final_index[public].data == expected, f"unsafe helper wrapper contents: /{public}")
+
+    required_original_assets = {
+        "file_contexts",
+        "system/etc/mkshrc",
+        "sbin/bash",
+        "system/etc/bash/bashrc",
+        "system/etc/init/nano.rc",
+        "system/etc/nano/nanorc",
+        "system/etc/terminfo/x/xterm-256color",
+    }
+    included_assets = set(private.get("original_assets_included", []))
+    require(
+        required_original_assets <= included_assets,
+        f"TWRP compatibility assets are incomplete: {sorted(required_original_assets - included_assets)}",
+    )
+    for asset in required_original_assets:
+        require(asset in final_index, f"required TWRP compatibility asset is absent: /{asset}")
+    require_data(final_index, "file_contexts")
+    require_data(final_index, "system/etc/mkshrc")
+    require_symlink(final_index, "sbin/bash", b"/system/bin/bash", "legacy Bash route")
+    require_symlink(final_index, "etc/bash", b"/system/etc/bash", "Bash configuration route")
+    require_symlink(final_index, "etc/nano", b"/system/etc/nano", "Nano configuration route")
+    require_symlink(final_index, "etc/terminfo", b"/system/etc/terminfo", "terminfo compatibility route")
+    require(
+        set(private.get("feature_bundles", {})) == {"bash", "nano"},
+        "Bash/Nano feature bundles are not both manifested",
+    )
+    require_marker(
+        require_data(final_index, "system/etc/init/nano.rc"),
+        b"export TERMINFO /system/etc/terminfo",
+        "Nano TERMINFO export",
+    )
     require(
         sha256(final_index["system/tw/lib64/libdecrypt_recovery.so"].data)
         == sha256(stock_index["system/lib64/libdecrypt_recovery.so"].data),
@@ -475,6 +559,10 @@ def main() -> None:
     require_marker(init, b"service recovery /system/tw/bin/r", "private recovery route")
     require_marker(init, b"service fastbootd /system/tw/bin/fastbootd", "private fastbootd route")
     require_marker(init, b"mkdir /tmp/misc/keystore/", "Keystore working directory")
+    require(
+        b"start phoenix_recovery" not in init and b"service phoenix_recovery " not in init,
+        "impossible stock Phoenix recovery service remains",
+    )
     require(b"mtk-msdc.0" not in init, "stock MediaTek e2fsck leftovers remain")
     require(
         b"wait /dev/block/bootdevice/by-name/modem" not in init,
