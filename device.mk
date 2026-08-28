@@ -92,8 +92,7 @@ PRODUCT_PACKAGES_ENG += \
 
 # OEM otacert
 PRODUCT_EXTRA_RECOVERY_KEYS += \
-    $(LOCAL_PATH)/security/oneplus \
-    $(LOCAL_PATH)/security/pixelexperience
+    $(LOCAL_PATH)/security/oneplus
 
 # Android 12 recovery product configuration.
 PRODUCT_BUILD_RECOVERY_IMAGE := true
