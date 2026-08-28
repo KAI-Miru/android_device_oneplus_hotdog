@@ -162,6 +162,8 @@ def main() -> None:
         APEX_POLICY_RULES,
         APEX_POLICY_TOOL,
         FIRMWARE_FILES,
+        LEGACY_INSTALLER_SHELL,
+        LEGACY_INSTALLER_SHELL_TARGET,
         QSEE_RUNTIME_FILES,
         QSEE_RUNTIME_NEEDED,
         STOCK_CREDENTIAL_HELPER,
@@ -255,6 +257,41 @@ def main() -> None:
             continue
         require(target == source, f"stock OnePlus entry changed unexpectedly: {name}")
         preserved_count += 1
+
+    sbin = final_index.get("sbin")
+    require(
+        sbin is not None and sbin.mode & 0o170000 == 0o040000,
+        "legacy ZIP installer parent is not a directory",
+    )
+    installer_shell = final_index.get(LEGACY_INSTALLER_SHELL)
+    require(installer_shell is not None, "legacy ZIP installer shell route is absent")
+    require(
+        installer_shell.mode & 0o170000 == 0o120000,
+        "legacy ZIP installer shell route is not a symlink",
+    )
+    require(
+        installer_shell.data == LEGACY_INSTALLER_SHELL_TARGET,
+        "legacy ZIP installer shell route has the wrong target",
+    )
+    system_shell = final_index.get(LEGACY_INSTALLER_SHELL_TARGET.lstrip(b"/").decode("ascii"))
+    require(system_shell is not None, "legacy ZIP installer shell target is absent")
+    require(
+        system_shell.mode & 0o170000 == 0o100000 and system_shell.mode & 0o111 != 0,
+        "legacy ZIP installer shell target is not a regular executable",
+    )
+    installer_shell_records = [
+        record
+        for record in stock_patch["records"]
+        if record.get("target") == LEGACY_INSTALLER_SHELL
+    ]
+    require(
+        len(installer_shell_records) == 1
+        and installer_shell_records[0].get("entry_type") == "symlink"
+        and installer_shell_records[0].get("symlink_target")
+        == LEGACY_INSTALLER_SHELL_TARGET.decode("ascii")
+        and installer_shell_records[0].get("purpose") == "legacy_recovery_zip_installer",
+        "legacy ZIP installer shell route is not audited in the stock overlay manifest",
+    )
 
     for record in stock_patch["records"]:
         verify_record(final_index, record, "stock patch")
@@ -677,6 +714,7 @@ def main() -> None:
             "private_twrp_manifest_exact": True,
             "private_elf_dependency_closure_complete": True,
             "credential_helper_uses_stock_oos12_namespace": True,
+            "legacy_zip_installer_shell_route_present": True,
             "oplus_decrypt_and_keystore_markers_present": True,
             "commondcs_dependency_present_and_abi_matched": True,
             "gatekeeper_stock_namespace_closure_complete": True,

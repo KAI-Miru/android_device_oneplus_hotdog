@@ -43,6 +43,8 @@ LOGICAL_ROWS = (
 
 STOCK_CREDENTIAL_HELPER = "system/bin/oplus_h40_credential_helper"
 STOCK_INTERPRETER = "/system/bin/linker64"
+LEGACY_INSTALLER_SHELL = "sbin/sh"
+LEGACY_INSTALLER_SHELL_TARGET = b"/system/bin/sh"
 APEX_POLICY_TOOL = "/system/bin/hotdog_apex_policy"
 APEX_POLICY_RULES = (
     "allow kernel recovery fd use",
@@ -681,6 +683,38 @@ def main() -> None:
         TZDATA_PATH: TZDATA_PATH,
     }
     next_ino = max(entry.ino for entry in stock_entries) + 1
+
+    sbin = stock.get("sbin")
+    if sbin is None or sbin.mode & 0o170000 != 0o040000:
+        raise SystemExit("Hotdog stock lacks the /sbin directory")
+    stock_shell = stock.get(LEGACY_INSTALLER_SHELL_TARGET.lstrip(b"/").decode("ascii"))
+    if stock_shell is None:
+        raise SystemExit("Hotdog stock lacks /system/bin/sh")
+    if stock_shell.mode & 0o170000 != 0o100000 or stock_shell.mode & 0o111 == 0:
+        raise SystemExit("Hotdog stock /system/bin/sh is not a regular executable")
+    if LEGACY_INSTALLER_SHELL in stock:
+        raise SystemExit("Hotdog stock unexpectedly already contains /sbin/sh")
+    installer_shell = newc.regular_file(
+        LEGACY_INSTALLER_SHELL,
+        LEGACY_INSTALLER_SHELL_TARGET,
+        mode=0o120777,
+        ino=next_ino,
+    )
+    next_ino += 1
+    overlay.append(installer_shell)
+    records.append(
+        {
+            "kind": "addition",
+            "source": "stock:system/bin/sh",
+            "target": LEGACY_INSTALLER_SHELL,
+            "target_sha256": sha256(installer_shell.data),
+            "target_bytes": len(installer_shell.data),
+            "entry_type": "symlink",
+            "symlink_target": LEGACY_INSTALLER_SHELL_TARGET.decode("ascii"),
+            "purpose": "legacy_recovery_zip_installer",
+        }
+    )
+
     for target_name, source_name in additions.items():
         if target_name in stock:
             raise SystemExit(f"Hotdog stock unexpectedly contains planned addition: {target_name}")
