@@ -139,6 +139,8 @@ def main() -> None:
         elf_interpreter,
     )
     from make_hotdog_runtime_overlay import (  # noqa: PLC0415
+        DISPLAYCONFIG_SHA256,
+        DISPLAYCONFIG_TARGET,
         POLICY_SHA256,
         POLICY_TARGET,
         STOCK_SEPOLICY_SHA256,
@@ -317,10 +319,20 @@ def main() -> None:
         "wrong APEX policy tool in final ramdisk",
     )
     require(
+        sha256(final_index[DISPLAYCONFIG_TARGET].data) == DISPLAYCONFIG_SHA256,
+        "wrong OOS12 F.22 displayconfig in final ramdisk",
+    )
+    require(
         sha256(final_index["sepolicy"].data) == STOCK_SEPOLICY_SHA256,
         "stock OOS12 sepolicy was replaced instead of patched live",
     )
     apex_policy = runtime.get("apex_policy", {})
+    displayconfig = runtime.get("displayconfig", {})
+    require(
+        displayconfig.get("sha256") == DISPLAYCONFIG_SHA256
+        and displayconfig.get("target") == DISPLAYCONFIG_TARGET,
+        "runtime manifest has the wrong displayconfig identity",
+    )
     require(apex_policy.get("rule") == APEX_POLICY_RULE, "runtime manifest has the wrong APEX rule")
     require(apex_policy.get("target") == POLICY_TARGET, "runtime manifest has the wrong APEX tool path")
     require(apex_policy.get("stock_sepolicy_preserved") is True, "runtime manifest does not preserve stock policy")

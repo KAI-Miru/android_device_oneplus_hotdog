@@ -28,6 +28,15 @@ POLICY_RULE = "allow kernel recovery fd use"
 POLICY_SOURCE_APK_SHA256 = "e0d32d2123532860f97123d927b1bb86c4e08e6fd8a48bfc6b5bee0afae9ebd5"
 POLICY_SOURCE_URL = "https://github.com/topjohnwu/Magisk/releases/tag/v30.7"
 
+DISPLAYCONFIG_TARGET = "system/lib64/libdisplayconfig.qti.so"
+DISPLAYCONFIG_BYTES = 105_768
+DISPLAYCONFIG_SHA256 = "18b95c53abeb03ab67e8eadd2a2009730109a8f04302d37663176d906b806327"
+DISPLAYCONFIG_SOURCE = (
+    "arminask/android_device_oneplus_hotdog@"
+    "6ab060ecd35d89511fb6cd9e1d33e0486bd017b0:"
+    "recovery/root/vendor/lib64/libdisplayconfig.qti.so"
+)
+
 LIBRARIES = (
     {
         "role": "gatekeeper_closure",
@@ -37,9 +46,10 @@ LIBRARIES = (
     },
     {
         "role": "secure_ui_closure",
-        "source": "vendor/lib64/libdisplayconfig.qti.so",
-        "target": "system/lib64/libdisplayconfig.qti.so",
+        "source": DISPLAYCONFIG_SOURCE,
+        "target": DISPLAYCONFIG_TARGET,
         "soname": "libdisplayconfig.qti.so",
+        "pinned_prebuilt": True,
     },
     {
         "role": "secure_ui_closure",
@@ -122,6 +132,7 @@ def main() -> None:
     parser.add_argument("--twrp-cpio", type=Path, required=True)
     parser.add_argument("--stock-tree", type=Path, required=True)
     parser.add_argument("--twrp-tree", type=Path, required=True)
+    parser.add_argument("--displayconfig", type=Path, required=True)
     parser.add_argument("--policy-tool", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -162,13 +173,25 @@ def main() -> None:
         source_name = spec["source"]
         target_name = spec["target"]
         require(target_name not in stock, f"stock recovery already contains {target_name}")
-        source = twrp.get(source_name)
-        require(source is not None, f"TWRP build is missing {source_name}")
-        source_path = args.twrp_tree / source_name
+        if spec.get("pinned_prebuilt"):
+            source_path = args.displayconfig
+            source_data = source_path.read_bytes()
+            require(
+                len(source_data) == DISPLAYCONFIG_BYTES
+                and sha256(source_data) == DISPLAYCONFIG_SHA256,
+                "OOS12 F.22 displayconfig identity mismatch",
+            )
+            source = stock[STOCK_SECURE_UI]
+        else:
+            source = twrp.get(source_name)
+            require(source is not None, f"TWRP build is missing {source_name}")
+            source_path = args.twrp_tree / source_name
+            source_data = source.data
         parsed = elf(source_path, elf_audit)
         require(parsed.soname == spec["soname"], f"unexpected SONAME for {source_name}: {parsed.soname}")
-        require(source_path.read_bytes() == source.data, f"TWRP tree/CPIO mismatch: {source_name}")
-        target = replace(source, name=target_name, ino=next_ino, nlink=1)
+        if not spec.get("pinned_prebuilt"):
+            require(source_path.read_bytes() == source.data, f"TWRP tree/CPIO mismatch: {source_name}")
+        target = replace(source, name=target_name, ino=next_ino, nlink=1, data=source_data)
         next_ino += 1
         overlay.append(target)
         injected[target_name] = (source_path, parsed)
@@ -177,6 +200,7 @@ def main() -> None:
                 "kind": "addition",
                 "role": spec["role"],
                 "source": source_name,
+                "source_kind": "pinned_oos12_f22" if spec.get("pinned_prebuilt") else "twrp_build",
                 "target": target_name,
                 "target_bytes": len(target.data),
                 "target_sha256": sha256(target.data),
@@ -239,6 +263,12 @@ def main() -> None:
         "twrp_cpio_sha256": sha256(args.twrp_cpio.read_bytes()),
         "records": records,
         "stock_namespace_closures": closures,
+        "displayconfig": {
+            "source": DISPLAYCONFIG_SOURCE,
+            "bytes": DISPLAYCONFIG_BYTES,
+            "sha256": DISPLAYCONFIG_SHA256,
+            "target": DISPLAYCONFIG_TARGET,
+        },
         "apex_policy": {
             "mode": "synchronous_live_additive_before_default_class",
             "rule": POLICY_RULE,

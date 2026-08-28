@@ -28,6 +28,14 @@
       "source_odm_bytes": 151891968,
       "source_odm_sha256": "aac4c35f172358a42b2433a2197359ed224a2cb75a857c505ee79c615e0846c7"
     },
+    "vendor/lib64/libdisplayconfig.qti.so": {
+      "bytes": 105768,
+      "sha256": "18b95c53abeb03ab67e8eadd2a2009730109a8f04302d37663176d906b806327",
+      "source_commit": "6ab060ecd35d89511fb6cd9e1d33e0486bd017b0",
+      "source_path": "recovery/root/vendor/lib64/libdisplayconfig.qti.so",
+      "source_repository": "arminask/android_device_oneplus_hotdog",
+      "source_release": "OxygenOS F.22 / LineageOS 20 blob refresh"
+    },
     "tools/hotdog-apex-policy": {
       "bytes": 356584,
       "sha256": "9837db9db475eb74b6715f081768cb6a1f2fb5a2b2ac15755686062501bace27",

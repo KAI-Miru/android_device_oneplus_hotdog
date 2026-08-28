@@ -15,6 +15,10 @@ canonical invocation and pins every source input.
   the isolated TWRP runtime and prove its ELF/`dlopen` dependency closure.
 - `make_hotdog_cryptoeng_overlay.py` verifies and installs the exact Hotdog
   ODM CommonDCS dependency.
+- `make_hotdog_runtime_overlay.py` combines the pinned F.22 proprietary
+  display implementation with the freshly built HIDL 2.0 interface, closes
+  the stock Secure UI and Gatekeeper namespaces, and installs the live APEX
+  policy tool.
 - `merge_newc.py`, `gzip_deterministic.py`, and `repack_boot_v2.py` create the
   deterministic final boot payload.
 - the pinned Android 12.1 `avbtool` adds/verifies the explicit test footer.

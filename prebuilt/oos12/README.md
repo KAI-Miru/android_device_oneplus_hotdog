@@ -16,6 +16,13 @@ image. It supplies the one DT_NEEDED dependency absent from the stock recovery
 ramdisk's cryptoeng service. Its digest is identical to the already audited
 H.40 copy, but the checked-in file now has Hotdog ODM provenance.
 
+`vendor/lib64/libdisplayconfig.qti.so` is the Hotdog OxygenOS F.22 blob from
+the pinned `arminask/android_device_oneplus_hotdog` blob-refresh commit. The
+preserved stock `libsecureui.so` requires this proprietary implementation,
+while CI builds its open `vendor.display.config@2.0` HIDL dependency. The
+packager verifies the prebuilt's byte count, SHA-256, ELF class, SONAME, and
+dependency edge before placing it in the stock linker namespace.
+
 `tools/hotdog-apex-policy` is the arm64 `magiskpolicy` executable from the
 official Magisk v30.7 APK, renamed for its single recovery-only purpose. The
 stock OOS12 `sepolicy` file is never replaced: init uses this tool once, before
