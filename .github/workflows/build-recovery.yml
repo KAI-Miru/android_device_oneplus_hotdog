@@ -188,7 +188,7 @@ jobs:
           c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e  recovery.patch
           0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523  security.patch
           452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364  task-profiles.patch
-          78fdd04c6c1dce9a2c004c16dcfb3b39c91b9539038104f0e89acaac81638ce8  vold.patch
+          034b64defe6e7ff10b91e8948e0f2ac19da3a7f434bb03e9e6351fba283f2cda  vold.patch
           EOF
           ) | tee "$GITHUB_WORKSPACE/patch-checksums.txt"
 
@@ -228,11 +228,13 @@ jobs:
           grep -Fq '/dev/block/bootdevice/by-name/system' \
             bootable/recovery/oplus_h40_decrypt.cpp
           grep -Fq 'Decrypt_User_H40_Modern' system/vold/Decrypt.cpp
+          grep -Fq 'direct-aes-minimal' system/vold/FsCrypt.cpp
+          grep -Fq 'direct-aes-legacy-none' system/vold/FsCrypt.cpp
           grep -Fq '{"encrypted_key", "secdiscardable", "stretching", "version"}' \
             system/vold/FsCrypt.cpp
           grep -Fq '"stretching", 4, "none"' system/vold/FsCrypt.cpp
           grep -Fq '"secdiscardable", 1 << 14' system/vold/FsCrypt.cpp
-          grep -Fq '[H40 V55 CURRENT]' system/vold/FsCrypt.cpp
+          grep -Fq '[OPLUS V56 LAYOUT]' system/vold/FsCrypt.cpp
           grep -Fq 'GetKeyUpgradeLock()' system/vold/KeyStorage.cpp
           grep -Fq 'GetKeyDirsToCommit()' system/vold/KeyStorage.cpp
           grep -Fq 'malformed pKMblob prefix' system/vold/Keymaster.cpp

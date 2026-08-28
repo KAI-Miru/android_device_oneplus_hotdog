@@ -7,10 +7,12 @@ snapshots. The final adapter includes parent-KeyStorage handling, malformed
 stability bridge, credential-time Keystore2 startup, and universal mounted
 dynamic/static system-identity discovery.
 
-Hotdog's current user-0 CE key uses the ColorOS direct-AES form with Android's
-16 KiB `secdiscardable`. The current-only installer validates that exact
-three-file layout before each read and still rejects Keymaster blobs, links,
-extra files, and every key-directory mutation path.
+The recovery and vold decryption patches are shared byte-for-byte with
+Guacamole. The current-only installer detects either proven Oplus direct-AES
+schema at runtime: the minimal `encrypted_key` plus `version` form, or the
+legacy-`none` form with a nonzero 16 KiB `secdiscardable`. It revalidates the
+same schema before key retrieval and rejects Keymaster blobs, links, malformed
+or mixed layouts, extra files, and every key-directory mutation path.
 
 The adapter is only one half of the result. `build/oos12/` packages its output
 as a private runtime inside the exact Hotdog OxygenOS 12 stock recovery
@@ -28,7 +30,7 @@ TWRP namespaces.
 | `recovery.patch` | `bootable/recovery` | `c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e` |
 | `security.patch` | `system/security` | `0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523` |
 | `task-profiles.patch` | `system/core` | `452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364` |
-| `vold.patch` | `system/vold` | `78fdd04c6c1dce9a2c004c16dcfb3b39c91b9539038104f0e89acaac81638ce8` |
+| `vold.patch` | `system/vold` | `034b64defe6e7ff10b91e8948e0f2ac19da3a7f434bb03e9e6351fba283f2cda` |
 
 The workflow verifies each checksum before applying it, checks the expected
 changed path set, rejects legacy unsafe fallbacks, audits the linked ELFs, and
