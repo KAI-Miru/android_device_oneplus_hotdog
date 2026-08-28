@@ -29,14 +29,16 @@ builder are shared concepts.
 
 CI reconstructs the exact OOS12 recovery boot payload from the files described
 by `prebuilt/oos12/manifest.json`. It decompresses the stock and compiled TWRP
-ramdisks without a filesystem round trip, then builds three deterministic
+ramdisks without a filesystem round trip, then builds four deterministic
 newc overlays:
 
-1. minimal stock-side routing, dynamic fstab, SELinux context, Keystore2, and
-   TWRP flag changes;
+1. stock-side routing, dynamic fstab, USB, cgroup, haptics, SELinux context,
+   Keystore2, and TWRP flag changes;
 2. the private TWRP executables, resources, linker, recursive ELF closure, and
    the exact five-file Oplus decrypt load group;
-3. the Hotdog ODM CommonDCS library required by the stock cryptoeng service.
+3. the Hotdog ODM CommonDCS library required by the stock cryptoeng service;
+4. the stock Gatekeeper/Secure UI closure and the narrowly scoped live APEX
+   policy rule.
 
 Every unpatched stock CPIO entry must remain byte-and-metadata identical.
 The verifier rejects duplicate paths, missing closure members, unresolved

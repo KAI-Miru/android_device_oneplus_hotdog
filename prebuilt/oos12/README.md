@@ -16,6 +16,17 @@ image. It supplies the one DT_NEEDED dependency absent from the stock recovery
 ramdisk's cryptoeng service. Its digest is identical to the already audited
 H.40 copy, but the checked-in file now has Hotdog ODM provenance.
 
+`system/lib64/libkeystore-attestation-application-id.so` comes from the
+audited OnePlus 7 Pro H.40 stock recovery. Hotdog's stock `gatekeeperd` and
+the rest of its system-library closure are byte-identical to that H.40
+runtime. This stock-era library replaces the A12-built copy whose newer
+`RefBase` ABI made Hotdog's preserved `gatekeeperd` fail at process start.
+
+The three `vendor/firmware` haptics files are pinned from the Hotdog A12
+device tree at commit `8189a039c1c402d1bb0b433935f5b1fb72a81a27`. They are
+packaged directly into the final stock-first ramdisk so the kernel can load
+them before TWRP starts.
+
 `vendor/lib64/libdisplayconfig.qti.so` is the Hotdog OxygenOS F.22 blob from
 the pinned `arminask/android_device_oneplus_hotdog` blob-refresh commit. The
 preserved stock `libsecureui.so` requires this proprietary implementation,
@@ -26,9 +37,10 @@ dependency edge before placing it in the stock linker namespace.
 `tools/hotdog-apex-policy` is the arm64 `magiskpolicy` executable from the
 official Magisk v30.7 APK, renamed for its single recovery-only purpose. The
 stock OOS12 `sepolicy` file is never replaced: init uses this tool once, before
-starting the default service class, to add `allow kernel recovery fd use` for
-the qti loop worker. The source release, APK digest, executable digest, exact
-rule, and preserved stock-policy digest are pinned in the build manifests.
+starting the default service class, to add `allow kernel tmpfs file read` for
+the APEX image staged on recovery tmpfs. The source release, APK digest,
+executable digest, exact rule, and preserved stock-policy digest are pinned
+in the build manifests.
 Magisk is GPLv3 software; corresponding source is available from the v30.7
 release at https://github.com/topjohnwu/Magisk/releases/tag/v30.7.
 

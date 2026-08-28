@@ -134,11 +134,14 @@ def main() -> None:
     from make_hotdog_stock_overlay import (  # noqa: PLC0415
         APEX_POLICY_RULE,
         APEX_POLICY_TOOL,
+        FIRMWARE_FILES,
         STOCK_CREDENTIAL_HELPER,
         STOCK_INTERPRETER,
         elf_interpreter,
     )
     from make_hotdog_runtime_overlay import (  # noqa: PLC0415
+        ATTESTATION_SHA256,
+        ATTESTATION_TARGET,
         DISPLAYCONFIG_SHA256,
         DISPLAYCONFIG_TARGET,
         POLICY_SHA256,
@@ -289,7 +292,7 @@ def main() -> None:
     require_marker(require_data(final_index, "system/tw/bin/recovery"), b"[H40 V51 PARENT]", "ColorOS adapter marker")
     require_marker(
         require_data(final_index, "system/tw/bin/recovery"),
-        b"[H40 V54 CURRENT]",
+        b"[H40 V55 CURRENT]",
         "ColorOS secdiscardable CE-layout marker",
     )
     credential_helper = require_data(final_index, STOCK_CREDENTIAL_HELPER)
@@ -323,11 +326,16 @@ def main() -> None:
         "wrong OOS12 F.22 displayconfig in final ramdisk",
     )
     require(
+        sha256(final_index[ATTESTATION_TARGET].data) == ATTESTATION_SHA256,
+        "wrong stock-compatible gatekeeper attestation library in final ramdisk",
+    )
+    require(
         sha256(final_index["sepolicy"].data) == STOCK_SEPOLICY_SHA256,
         "stock OOS12 sepolicy was replaced instead of patched live",
     )
     apex_policy = runtime.get("apex_policy", {})
     displayconfig = runtime.get("displayconfig", {})
+    gatekeeper_attestation = runtime.get("gatekeeper_attestation", {})
     require(
         displayconfig.get("sha256") == DISPLAYCONFIG_SHA256
         and displayconfig.get("target") == DISPLAYCONFIG_TARGET,
@@ -336,10 +344,20 @@ def main() -> None:
     require(apex_policy.get("rule") == APEX_POLICY_RULE, "runtime manifest has the wrong APEX rule")
     require(apex_policy.get("target") == POLICY_TARGET, "runtime manifest has the wrong APEX tool path")
     require(apex_policy.get("stock_sepolicy_preserved") is True, "runtime manifest does not preserve stock policy")
+    require(
+        gatekeeper_attestation.get("sha256") == ATTESTATION_SHA256
+        and gatekeeper_attestation.get("target") == ATTESTATION_TARGET
+        and gatekeeper_attestation.get("incompatible_refbase_symbol_absent") is True,
+        "runtime manifest has the wrong gatekeeper attestation identity",
+    )
     closures = runtime.get("stock_namespace_closures", {})
     for label in ("gatekeeper", "secure_ui"):
         require(label in closures, f"runtime manifest lacks {label} closure")
         require(closures[label].get("unresolved") == [], f"runtime manifest has unresolved {label} libraries")
+        require(
+            closures[label].get("unresolved_strong_symbols") == [],
+            f"runtime manifest has unresolved {label} symbols",
+        )
     require(
         any(
             item.get("provider") == "injected:system/lib64/libkeystore-attestation-application-id.so"
@@ -375,6 +393,33 @@ def main() -> None:
     require_marker(init, b"service recovery /system/tw/bin/r", "private recovery route")
     require_marker(init, b"service fastbootd /system/tw/bin/fastbootd", "private fastbootd route")
     require_marker(init, b"mkdir /tmp/misc/keystore/", "Keystore working directory")
+    require(b"mtk-msdc.0" not in init, "stock MediaTek e2fsck leftovers remain")
+    require(
+        b"wait /dev/block/bootdevice/by-name/modem" not in init,
+        "stock five-second modem wait remains",
+    )
+    require_marker(init, b"mkdir /config/usb_gadget/g1/functions/mtp.gs0", "MTP configfs function")
+    require_marker(init, b"Configfs was mounted and initialized by the stock init action", "single configfs mount")
+    require(
+        b"on fs && property:sys.usb.configfs=1\n    mount configfs none /config" not in init,
+        "stock init still mounts configfs twice",
+    )
+    require_marker(
+        init,
+        b"on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1",
+        "MTP plus ADB configfs route",
+    )
+    require_marker(
+        init,
+        b'write /config/usb_gadget/g1/UDC "none"\n    rm /config/usb_gadget/g1/configs/b.1/f1\n    rm /config/usb_gadget/g1/configs/b.1/f2',
+        "idempotent USB gadget teardown",
+    )
+    qcom_usb = require_data(final_index, "init.recovery.qcom.rc")
+    require_marker(qcom_usb, b"Configfs binding is owned by the mode-specific routes", "single USB owner")
+    require(
+        b"on property:sys.usb.ffs.ready=1" not in qcom_usb,
+        "Qualcomm init still owns an unconditional duplicate USB binding",
+    )
     policy_command = (
         f'exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{APEX_POLICY_RULE}"'
     ).encode()
@@ -421,6 +466,22 @@ def main() -> None:
     props = require_data(final_index, "prop.default").decode("utf-8")
     for setting in ("ro.secure=0", "ro.adb.secure=0", "ro.debuggable=1", "persist.sys.usb.config=adb", "ro.boot.dynamic_partitions=true"):
         require(setting in props, f"missing recovery property: {setting}")
+
+    cgroups = json.loads(require_data(final_index, "etc/cgroups.json"))
+    controllers = {row["Controller"] for row in cgroups.get("Cgroups", [])}
+    require(
+        controllers == {"blkio", "cpu", "cpuacct", "cpuset", "memory", "schedtune"},
+        "final root cgroups.json has the wrong controller set",
+    )
+    task_profiles = json.loads(require_data(final_index, "etc/task_profiles.json"))
+    require(
+        bool(task_profiles.get("Profiles")) and bool(task_profiles.get("AggregateProfiles")),
+        "final root task_profiles.json is incomplete",
+    )
+    for filename, (expected_bytes, expected_sha256) in FIRMWARE_FILES.items():
+        data = require_data(final_index, f"vendor/firmware/{filename}")
+        require(len(data) == expected_bytes, f"wrong haptics firmware size: {filename}")
+        require(sha256(data) == expected_sha256, f"wrong haptics firmware digest: {filename}")
 
     report = {
         "format": 1,
@@ -487,6 +548,10 @@ def main() -> None:
             "gatekeeper_stock_namespace_closure_complete": True,
             "secure_ui_stock_namespace_closure_complete": True,
             "stock_sepolicy_exact_and_apex_rule_synchronous": True,
+            "usb_configfs_routes_idempotent_with_mtp": True,
+            "root_cgroup_configuration_present": True,
+            "hotdog_haptics_firmware_present": True,
+            "irrelevant_stock_init_delays_removed": True,
             "dynamic_ab_fstab_and_recovery_partition_present": True,
             "avb_footer_structurally_valid": True,
         },

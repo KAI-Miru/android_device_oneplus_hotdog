@@ -44,7 +44,22 @@ LOGICAL_ROWS = (
 STOCK_CREDENTIAL_HELPER = "system/bin/oplus_h40_credential_helper"
 STOCK_INTERPRETER = "/system/bin/linker64"
 APEX_POLICY_TOOL = "/system/bin/hotdog_apex_policy"
-APEX_POLICY_RULE = "allow kernel recovery fd use"
+APEX_POLICY_RULE = "allow kernel tmpfs file read"
+
+FIRMWARE_FILES = {
+    "aw8697_haptic_170.bin": (
+        5_852,
+        "c77f9450350bd0036674c67cea62fd12784fe00aba5bc9e01f3411782fac57db",
+    ),
+    "40ms_RTP_170Hz.bin": (
+        985,
+        "f1de14505c59a0d91db1f1b2cf7e58a276f949f61946273cefb001d59f780527",
+    ),
+    "80ms_RTP_170Hz.bin": (
+        1_979,
+        "98fb90d52ddf8ce2e5825d057c67be0237d78e6c6df439c2d8fbceff136ab4ff",
+    ),
+}
 
 
 def sha256(data: bytes) -> str:
@@ -110,9 +125,145 @@ def patch_init(text: str) -> str:
         raise SystemExit("Hotdog stock init already contains TWRP Keystore2 directories")
     text = text.replace(anchor, anchor + additions, 1)
 
-    # The stock recovery policy lacks the one cross-domain fd permission that
-    # qti's loop worker needs. Apply only that live rule synchronously before
-    # class_start default launches recovery; the OEM policy file stays exact.
+    mtk_checks = (
+        "    exec /sbin/e2fsck -y /dev/block/platform/mtk-msdc.0/by-name/cache\n"
+        "    exec /sbin/e2fsck -y /dev/block/platform/mtk-msdc.0/by-name/userdata\n"
+    )
+    if text.count(mtk_checks) != 1:
+        raise SystemExit("unexpected stock MediaTek e2fsck leftovers")
+    text = text.replace(
+        mtk_checks,
+        "    # Removed irrelevant MediaTek recovery filesystem checks.\n",
+        1,
+    )
+    modem_wait = "    wait /dev/block/bootdevice/by-name/modem\n"
+    if text.count(modem_wait) != 1:
+        raise SystemExit("unexpected stock modem wait")
+    text = text.replace(
+        modem_wait,
+        "    # The logical modem node is not required before recovery QSEE starts.\n",
+        1,
+    )
+
+    # Stock init owns configfs in the stock-first ramdisk.  Make every route
+    # tear down the prior binding before replacing its function links, and add
+    # the MTP combinations TWRP requests.  This also makes repeated ffs.ready
+    # notifications harmless instead of producing EEXIST/EBUSY.
+    mtp_anchor = "    mkdir /config/usb_gadget/g1/functions/ffs.adb\n"
+    if text.count(mtp_anchor) != 3 or "functions/mtp.gs0" in text:
+        raise SystemExit("unexpected Hotdog stock configfs function setup")
+    text = text.replace(
+        mtp_anchor,
+        mtp_anchor + "    mkdir /config/usb_gadget/g1/functions/mtp.gs0\n",
+    )
+    duplicate_mount = (
+        "on fs && property:sys.usb.configfs=1\n"
+        "    mount configfs none /config\n"
+    )
+    if text.count(duplicate_mount) != 1:
+        raise SystemExit("unexpected Hotdog duplicate configfs mount")
+    text = text.replace(
+        duplicate_mount,
+        "on fs && property:sys.usb.configfs=1\n"
+        "    # Configfs was mounted and initialized by the stock init action.\n",
+        1,
+    )
+    config_dir_anchor = (
+        "    mkdir /config/usb_gadget/g1/configs/b.1/strings/0x409 0770 shell shell\n"
+        "\n"
+        "on fs && property:sys.usb.configfs=0"
+    )
+    if text.count(config_dir_anchor) != 1:
+        raise SystemExit("unexpected Hotdog stock configfs descriptor setup")
+    text = text.replace(
+        config_dir_anchor,
+        "    mkdir /config/usb_gadget/g1/configs/b.1/strings/0x409 0770 shell shell\n"
+        "    rm /config/usb_gadget/g1/os_desc/b.1\n"
+        "    symlink /config/usb_gadget/g1/configs/b.1 /config/usb_gadget/g1/os_desc/b.1\n"
+        "\n"
+        "on fs && property:sys.usb.configfs=0",
+        1,
+    )
+
+    configfs_start = text.find("# Configfs triggers\n")
+    configfs_end_anchor = "\n#Fangfang.Hui@PSW.AD.Storage.DiskEncryption.1122242"
+    configfs_end = text.find(configfs_end_anchor, configfs_start)
+    if configfs_start < 0 or configfs_end < 0:
+        raise SystemExit("Hotdog stock configfs trigger block was not found")
+    configfs = """# Configfs triggers; routes are idempotent across TWRP mode changes.
+on property:sys.usb.config=none && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC "none"
+    stop adbd
+    stop fastbootd
+    setprop sys.usb.ffs.ready 0
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    setprop sys.usb.state ${sys.usb.config}
+
+on property:sys.usb.config=sideload && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC "none"
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    write /config/usb_gadget/g1/idVendor 0x18D1
+    write /config/usb_gadget/g1/idProduct 0xD001
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "adb"
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC "none"
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    write /config/usb_gadget/g1/idVendor 0x18D1
+    write /config/usb_gadget/g1/idProduct 0xD001
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "adb"
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+on property:sys.usb.config=fastboot && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC "none"
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    write /config/usb_gadget/g1/idVendor 0x18D1
+    write /config/usb_gadget/g1/idProduct 0x4EE0
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "fastboot"
+    symlink /config/usb_gadget/g1/functions/ffs.fastboot /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+on property:sys.usb.config=mtp && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC "none"
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    write /config/usb_gadget/g1/idVendor 0x2A70
+    write /config/usb_gadget/g1/idProduct 0xF003
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "mtp"
+    symlink /config/usb_gadget/g1/functions/mtp.gs0 /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1
+    start adbd
+
+on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC "none"
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    rm /config/usb_gadget/g1/configs/b.1/f2
+    write /config/usb_gadget/g1/idVendor 0x2A70
+    write /config/usb_gadget/g1/idProduct 0x9012
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "mtp_adb"
+    symlink /config/usb_gadget/g1/functions/mtp.gs0 /config/usb_gadget/g1/configs/b.1/f1
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f2
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+"""
+    text = text[:configfs_start] + configfs + text[configfs_end:]
+
+    # The stock recovery policy blocks the kernel domain from reading the APEX
+    # image staged on recovery tmpfs. Apply only that live rule synchronously
+    # before class_start default; the OEM policy file stays byte-exact.
     class_anchor = "    class_start default\n"
     policy_command = (
         f'    exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{APEX_POLICY_RULE}"\n'
@@ -122,6 +273,27 @@ def patch_init(text: str) -> str:
     if APEX_POLICY_TOOL in text or APEX_POLICY_RULE in text:
         raise SystemExit("Hotdog stock init already contains the APEX policy hook")
     return text.replace(class_anchor, policy_command + class_anchor, 1)
+
+
+def patch_qcom_usb(text: str) -> str:
+    """Remove the second, unconditional owner of the configfs ADB binding."""
+
+    trigger = """on property:sys.usb.ffs.ready=1
+    mkdir /config/usb_gadget/g1/configs/b.1 0777 shell shell
+    symlink /config/usb_gadget/g1/configs/b.1 /config/usb_gadget/g1/os_desc/b.1
+    mkdir /config/usb_gadget/g1/configs/b.1/strings/0x409 0770 shell shell
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "adb"
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+"""
+    if text.count(trigger) != 1:
+        raise SystemExit("unexpected Qualcomm unconditional USB-ready trigger")
+    return text.replace(
+        trigger,
+        "# Configfs binding is owned by the mode-specific routes in "
+        "/system/etc/init/hw/init.rc.\n",
+        1,
+    )
 
 
 def patch_linker_config(text: str) -> str:
@@ -242,6 +414,7 @@ def main() -> None:
     parser.add_argument("--newc-dir", type=Path, required=True)
     parser.add_argument("--stock-cpio", type=Path, required=True)
     parser.add_argument("--twrp-cpio", type=Path, required=True)
+    parser.add_argument("--firmware-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
@@ -257,6 +430,7 @@ def main() -> None:
 
     transforms = {
         "system/etc/init/hw/init.rc": patch_init,
+        "init.recovery.qcom.rc": patch_qcom_usb,
         "system/etc/ld.config.txt": patch_linker_config,
         "etc/recovery.fstab": lambda text: patch_dynamic_fstab(text, "etc/recovery.fstab"),
         "system/etc/recovery.fstab": lambda text: patch_dynamic_fstab(
@@ -298,6 +472,10 @@ def main() -> None:
 
     additions = {
         "etc/twrp.flags": "system/etc/twrp.flags",
+        # Stock init cannot replace its real /etc directory with /system/etc.
+        # Put the A12 process-group configuration at the paths init reads.
+        "etc/cgroups.json": "system/etc/cgroups.json",
+        "etc/task_profiles.json": "system/etc/task_profiles.json",
         "system/etc/twrp.flags": "system/etc/twrp.flags",
         "system/etc/vintf/manifest/android.system.keystore2-service.xml": (
             "system/etc/vintf/manifest/android.system.keystore2-service.xml"
@@ -317,6 +495,16 @@ def main() -> None:
         source = twrp.get(source_name)
         if source is None:
             raise SystemExit(f"TWRP source is missing planned asset: {source_name}")
+        if target_name == "etc/cgroups.json":
+            config = json.loads(decode(source_name, source.data))
+            controllers = {row["Controller"] for row in config.get("Cgroups", [])}
+            required = {"blkio", "cpu", "cpuacct", "cpuset", "memory", "schedtune"}
+            if controllers != required or config.get("Cgroups2", {}).get("Path") != "/dev/cg2_bpf":
+                raise SystemExit("unexpected TWRP cgroups.json controller set")
+        if target_name == "etc/task_profiles.json":
+            profiles = json.loads(decode(source_name, source.data))
+            if not profiles.get("Profiles") or not profiles.get("AggregateProfiles"):
+                raise SystemExit("unexpected TWRP task_profiles.json")
         if target_name == STOCK_CREDENTIAL_HELPER:
             if source.mode & 0o170000 != 0o100000 or source.mode & 0o111 == 0:
                 raise SystemExit("credential helper is not a regular executable")
@@ -346,6 +534,58 @@ def main() -> None:
                 }
             )
         records.append(record)
+
+    firmware_dir_name = "vendor/firmware"
+    vendor_dir = stock.get("vendor")
+    file_template = stock.get("system/etc/cgroups.json")
+    if vendor_dir is None or vendor_dir.mode & 0o170000 != 0o040000:
+        raise SystemExit("Hotdog stock lacks a vendor directory metadata template")
+    if file_template is None or file_template.mode & 0o170000 != 0o100000:
+        raise SystemExit("Hotdog stock lacks a regular-file metadata template")
+    firmware_directory = stock.get(firmware_dir_name)
+    if firmware_directory is not None:
+        if firmware_directory.mode & 0o170000 != 0o040000:
+            raise SystemExit("Hotdog stock vendor/firmware is not a directory")
+    else:
+        firmware_directory = replace(vendor_dir, name=firmware_dir_name, ino=next_ino)
+        next_ino += 1
+        overlay.append(firmware_directory)
+        records.append(
+            {
+                "kind": "addition",
+                "source": "stock:vendor metadata",
+                "target": firmware_dir_name,
+                "target_sha256": sha256(firmware_directory.data),
+                "target_bytes": len(firmware_directory.data),
+            }
+        )
+    for filename, (expected_bytes, expected_sha256) in FIRMWARE_FILES.items():
+        source_path = args.firmware_dir / filename
+        source_data = source_path.read_bytes()
+        if len(source_data) != expected_bytes or sha256(source_data) != expected_sha256:
+            raise SystemExit(f"Hotdog haptics firmware identity mismatch: {filename}")
+        target_name = f"{firmware_dir_name}/{filename}"
+        if target_name in stock:
+            raise SystemExit(f"Hotdog stock unexpectedly contains {target_name}")
+        firmware = replace(
+            file_template,
+            name=target_name,
+            ino=next_ino,
+            nlink=1,
+            data=source_data,
+        )
+        next_ino += 1
+        overlay.append(firmware)
+        records.append(
+            {
+                "kind": "addition",
+                "source": str(source_path.resolve()),
+                "source_kind": "pinned_hotdog_a12_firmware",
+                "target": target_name,
+                "target_sha256": expected_sha256,
+                "target_bytes": expected_bytes,
+            }
+        )
 
     keystore_rc_name = "system/etc/init/keystore2.rc"
     if keystore_rc_name in stock:

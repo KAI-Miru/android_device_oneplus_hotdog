@@ -8,17 +8,18 @@ canonical invocation and pins every source input.
   boot payload.
 - `extract_boot_ramdisk.py`, `newc.py`, and `extract_newc_regulars.py` parse the
   boot/CPIO inputs without losing archive metadata.
-- `make_hotdog_stock_overlay.py` makes only the audited stock-side routing,
-  fstab, context, property, and Keystore2 changes, and installs the credential
-  helper unchanged in `/system/bin` so it uses the stock OOS12 namespace.
+- `make_hotdog_stock_overlay.py` makes the audited stock-side routing, fstab,
+  context, property, USB, cgroup, haptics, and Keystore2 changes, and installs
+  the credential helper unchanged in `/system/bin` so it uses the stock OOS12
+  namespace.
 - `make_private_twrp_overlay.py`, `h40_dlopen.py`, and `elf_audit.py` package
   the isolated TWRP runtime and prove its ELF/`dlopen` dependency closure.
 - `make_hotdog_cryptoeng_overlay.py` verifies and installs the exact Hotdog
   ODM CommonDCS dependency.
-- `make_hotdog_runtime_overlay.py` combines the pinned F.22 proprietary
-  display implementation with the freshly built HIDL 2.0 interface, closes
-  the stock Secure UI and Gatekeeper namespaces, and installs the live APEX
-  policy tool.
+- `make_hotdog_runtime_overlay.py` combines the pinned stock-compatible
+  Gatekeeper attestation library and F.22 display implementation with the
+  freshly built HIDL 2.0 interface, proves both strong-symbol closures, and
+  installs the live APEX policy tool.
 - `merge_newc.py`, `gzip_deterministic.py`, and `repack_boot_v2.py` create the
   deterministic final boot payload.
 - the pinned Android 12.1 `avbtool` adds/verifies the explicit test footer.

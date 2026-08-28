@@ -24,7 +24,7 @@ POLICY_TARGET = "system/bin/hotdog_apex_policy"
 POLICY_BYTES = 356_584
 POLICY_SHA256 = "9837db9db475eb74b6715f081768cb6a1f2fb5a2b2ac15755686062501bace27"
 POLICY_INTERPRETER = "/system/bin/linker64"
-POLICY_RULE = "allow kernel recovery fd use"
+POLICY_RULE = "allow kernel tmpfs file read"
 POLICY_SOURCE_APK_SHA256 = "e0d32d2123532860f97123d927b1bb86c4e08e6fd8a48bfc6b5bee0afae9ebd5"
 POLICY_SOURCE_URL = "https://github.com/topjohnwu/Magisk/releases/tag/v30.7"
 
@@ -37,19 +37,26 @@ DISPLAYCONFIG_SOURCE = (
     "recovery/root/vendor/lib64/libdisplayconfig.qti.so"
 )
 
+ATTESTATION_TARGET = "system/lib64/libkeystore-attestation-application-id.so"
+ATTESTATION_BYTES = 76_904
+ATTESTATION_SHA256 = "af002511be00e9400c4aab876a74a73b3c02f7246d2f0ba42de59d7a8ffab00b"
+ATTESTATION_SOURCE = "OnePlus 7 Pro H.40 stock recovery ramdisk"
+INCOMPATIBLE_REFBASE_SYMBOL = "_ZNK7android7RefBase22incStrongRequireStrongEPKv"
+
 LIBRARIES = (
     {
         "role": "gatekeeper_closure",
-        "source": "system/lib64/libkeystore-attestation-application-id.so",
-        "target": "system/lib64/libkeystore-attestation-application-id.so",
+        "source": ATTESTATION_SOURCE,
+        "target": ATTESTATION_TARGET,
         "soname": "libkeystore-attestation-application-id.so",
+        "pinned_prebuilt": "stock_attestation",
     },
     {
         "role": "secure_ui_closure",
         "source": DISPLAYCONFIG_SOURCE,
         "target": DISPLAYCONFIG_TARGET,
         "soname": "libdisplayconfig.qti.so",
-        "pinned_prebuilt": True,
+        "pinned_prebuilt": "displayconfig",
     },
     {
         "role": "secure_ui_closure",
@@ -98,6 +105,7 @@ def build_namespace(stock_tree: Path, injected: dict[str, tuple[Path, object]], 
 
 def resolve_closure(root: Path, providers: dict[str, tuple[str, object]], elf_audit) -> dict:
     root_elf = elf(root, elf_audit)
+    members = [root_elf]
     pending = list(root_elf.needed)
     visited: set[str] = set()
     chain: list[dict] = []
@@ -112,15 +120,28 @@ def resolve_closure(root: Path, providers: dict[str, tuple[str, object]], elf_au
             unresolved.add(soname)
             continue
         label, parsed = provider
+        members.append(parsed)
         chain.append({"soname": soname, "provider": label, "needed": parsed.needed})
         pending.extend(parsed.needed)
     require(not unresolved, f"unresolved stock namespace closure for {root}: {sorted(unresolved)}")
+    exports: set[str] = set()
+    imports: set[str] = set()
+    for parsed in members:
+        exports.update(parsed.defined)
+        imports.update(parsed.undefined_strong)
+    unresolved_symbols = sorted(imports - exports)
+    require(
+        not unresolved_symbols,
+        f"unresolved strong symbols in stock namespace closure for {root}: {unresolved_symbols}",
+    )
     return {
         "root": str(root),
         "root_needed": root_elf.needed,
         "resolved_sonames": sorted(visited),
         "providers": chain,
         "unresolved": [],
+        "strong_import_count": len(imports),
+        "unresolved_strong_symbols": [],
     }
 
 
@@ -132,6 +153,7 @@ def main() -> None:
     parser.add_argument("--twrp-cpio", type=Path, required=True)
     parser.add_argument("--stock-tree", type=Path, required=True)
     parser.add_argument("--twrp-tree", type=Path, required=True)
+    parser.add_argument("--gatekeeper-attestation", type=Path, required=True)
     parser.add_argument("--displayconfig", type=Path, required=True)
     parser.add_argument("--policy-tool", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -173,7 +195,18 @@ def main() -> None:
         source_name = spec["source"]
         target_name = spec["target"]
         require(target_name not in stock, f"stock recovery already contains {target_name}")
-        if spec.get("pinned_prebuilt"):
+        prebuilt_kind = spec.get("pinned_prebuilt")
+        if prebuilt_kind == "stock_attestation":
+            source_path = args.gatekeeper_attestation
+            source_data = source_path.read_bytes()
+            require(
+                len(source_data) == ATTESTATION_BYTES
+                and sha256(source_data) == ATTESTATION_SHA256,
+                "stock-compatible gatekeeper attestation library identity mismatch",
+            )
+            source = stock[STOCK_KEYSTORE_PARCELABLES]
+            source_kind = "pinned_oneplus_h40_stock"
+        elif prebuilt_kind == "displayconfig":
             source_path = args.displayconfig
             source_data = source_path.read_bytes()
             require(
@@ -182,15 +215,22 @@ def main() -> None:
                 "OOS12 F.22 displayconfig identity mismatch",
             )
             source = stock[STOCK_SECURE_UI]
+            source_kind = "pinned_oos12_f22"
         else:
             source = twrp.get(source_name)
             require(source is not None, f"TWRP build is missing {source_name}")
             source_path = args.twrp_tree / source_name
             source_data = source.data
+            source_kind = "twrp_build"
         parsed = elf(source_path, elf_audit)
         require(parsed.soname == spec["soname"], f"unexpected SONAME for {source_name}: {parsed.soname}")
-        if not spec.get("pinned_prebuilt"):
+        if not prebuilt_kind:
             require(source_path.read_bytes() == source.data, f"TWRP tree/CPIO mismatch: {source_name}")
+        if prebuilt_kind == "stock_attestation":
+            require(
+                INCOMPATIBLE_REFBASE_SYMBOL not in parsed.undefined_strong,
+                "attestation library still requires the incompatible Android 12 RefBase ABI",
+            )
         target = replace(source, name=target_name, ino=next_ino, nlink=1, data=source_data)
         next_ino += 1
         overlay.append(target)
@@ -200,7 +240,7 @@ def main() -> None:
                 "kind": "addition",
                 "role": spec["role"],
                 "source": source_name,
-                "source_kind": "pinned_oos12_f22" if spec.get("pinned_prebuilt") else "twrp_build",
+                "source_kind": source_kind,
                 "target": target_name,
                 "target_bytes": len(target.data),
                 "target_sha256": sha256(target.data),
@@ -268,6 +308,13 @@ def main() -> None:
             "bytes": DISPLAYCONFIG_BYTES,
             "sha256": DISPLAYCONFIG_SHA256,
             "target": DISPLAYCONFIG_TARGET,
+        },
+        "gatekeeper_attestation": {
+            "source": ATTESTATION_SOURCE,
+            "bytes": ATTESTATION_BYTES,
+            "sha256": ATTESTATION_SHA256,
+            "target": ATTESTATION_TARGET,
+            "incompatible_refbase_symbol_absent": True,
         },
         "apex_policy": {
             "mode": "synchronous_live_additive_before_default_class",

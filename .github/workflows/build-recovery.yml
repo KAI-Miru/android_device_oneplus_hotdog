@@ -49,14 +49,18 @@ jobs:
       BUILD_TARGET: recoveryimage
       RECOVERY_IMAGE_REL: out/target/product/hotdog/recovery.img
       RECOVERY_PARTITION_SIZE: "100663296"
-      OOS12_MANIFEST_SHA256: c62db519e9a67263eb7c000a1f8e526e5afa3d350c30bcc67c42ba76b5d36d69
+      OOS12_MANIFEST_SHA256: 19d9dbbc23e120da6615ae151c995caf34f7667720f6ea9bd87dcc54dcfc5fc1
       PREBUILT_KERNEL_SHA256: 4b435ff44ed87d45a334f071d0af59f8579e8d0ac70ddd1bc4cdbf8ac39b2d6a
       PREBUILT_DTB_SHA256: 558825c788f86b64927ca1c254db8876d4d54a27d067db3ba8b53f1543a28618
       PREBUILT_DTBO_SHA256: 7187d1e64e79b1a9416b1fb332ef8d670cc59ad6dcacc6864db2ed2eec0fd5b7
       STOCK_RAMDISK_GZIP_SHA256: 97449f9d692985bd44305bd23fe59db34a3d26711d6aea25f4dc4b8398546aed
       STOCK_RAMDISK_RAW_SHA256: 7fe6263a5cc654b363ef010a3b140ea404393dbf992ca0580156357d6e7c46d0
       COMMONDCS_SHA256: b626c790281f66279136437ca7065b5c0318462407c11c2a6ec2af04dc35e5a6
+      GATEKEEPER_ATTESTATION_SHA256: af002511be00e9400c4aab876a74a73b3c02f7246d2f0ba42de59d7a8ffab00b
       DISPLAYCONFIG_SHA256: 18b95c53abeb03ab67e8eadd2a2009730109a8f04302d37663176d906b806327
+      HAPTIC_BASE_SHA256: c77f9450350bd0036674c67cea62fd12784fe00aba5bc9e01f3411782fac57db
+      HAPTIC_40MS_SHA256: f1de14505c59a0d91db1f1b2cf7e58a276f949f61946273cefb001d59f780527
+      HAPTIC_80MS_SHA256: 98fb90d52ddf8ce2e5825d057c67be0237d78e6c6df439c2d8fbceff136ab4ff
       APEX_POLICY_TOOL_SHA256: 9837db9db475eb74b6715f081768cb6a1f2fb5a2b2ac15755686062501bace27
       AVBTOOL_SHA256: a9ec360fc5395db9b72d36c03af59ff984f4eefcc349dc32a556de7f8ed892ab
       BUILD_JOBS: "4"
@@ -215,10 +219,11 @@ jobs:
           grep -Fq '/dev/block/bootdevice/by-name/system' \
             bootable/recovery/oplus_h40_decrypt.cpp
           grep -Fq 'Decrypt_User_H40_Modern' system/vold/Decrypt.cpp
-          grep -Fq '{"encrypted_key", "secdiscardable", "version"}' \
+          grep -Fq '{"encrypted_key", "secdiscardable", "stretching", "version"}' \
             system/vold/FsCrypt.cpp
+          grep -Fq '"stretching", 4, "none"' system/vold/FsCrypt.cpp
           grep -Fq '"secdiscardable", 1 << 14' system/vold/FsCrypt.cpp
-          grep -Fq '[H40 V54 CURRENT]' system/vold/FsCrypt.cpp
+          grep -Fq '[H40 V55 CURRENT]' system/vold/FsCrypt.cpp
           grep -Fq 'GetKeyUpgradeLock()' system/vold/KeyStorage.cpp
           grep -Fq 'GetKeyDirsToCommit()' system/vold/KeyStorage.cpp
           grep -Fq 'malformed pKMblob prefix' system/vold/Keymaster.cpp
@@ -281,7 +286,11 @@ jobs:
             "$PREBUILT_DTBO_SHA256" "$DEVICE_PATH/prebuilt/oos12/recovery-dtbo.img" \
             "$STOCK_RAMDISK_GZIP_SHA256" "$DEVICE_PATH/prebuilt/oos12/ramdisk-stock.cpio.gz" \
             "$COMMONDCS_SHA256" "$DEVICE_PATH/prebuilt/oos12/odm/lib64/vendor.oplus.hardware.commondcs@1.0.so" \
+            "$GATEKEEPER_ATTESTATION_SHA256" "$DEVICE_PATH/prebuilt/oos12/system/lib64/libkeystore-attestation-application-id.so" \
             "$DISPLAYCONFIG_SHA256" "$DEVICE_PATH/prebuilt/oos12/vendor/lib64/libdisplayconfig.qti.so" \
+            "$HAPTIC_BASE_SHA256" "$DEVICE_PATH/prebuilt/oos12/vendor/firmware/aw8697_haptic_170.bin" \
+            "$HAPTIC_40MS_SHA256" "$DEVICE_PATH/prebuilt/oos12/vendor/firmware/40ms_RTP_170Hz.bin" \
+            "$HAPTIC_80MS_SHA256" "$DEVICE_PATH/prebuilt/oos12/vendor/firmware/80ms_RTP_170Hz.bin" \
             "$APEX_POLICY_TOOL_SHA256" "$DEVICE_PATH/prebuilt/oos12/tools/hotdog-apex-policy" \
             "$AVBTOOL_SHA256" "$DEVICE_PATH/build/oos12/avbtool_android-12.1.0_r4.py" \
             | sha256sum --check - \
@@ -585,6 +594,7 @@ jobs:
             --newc-dir "$tools" \
             --stock-cpio "$work/stock.cpio" \
             --twrp-cpio "$work/twrp.cpio" \
+            --firmware-dir "$prebuilt/vendor/firmware" \
             --output "$work/stock-overlay.cpio" \
             --manifest "$work/stock-overlay.json"
           python3 "$tools/make_private_twrp_overlay.py" \
@@ -620,6 +630,7 @@ jobs:
             --twrp-cpio "$work/twrp.cpio" \
             --stock-tree "$work/stock-tree" \
             --twrp-tree "$work/twrp-tree" \
+            --gatekeeper-attestation "$prebuilt/system/lib64/libkeystore-attestation-application-id.so" \
             --displayconfig "$prebuilt/vendor/lib64/libdisplayconfig.qti.so" \
             --policy-tool "$prebuilt/tools/hotdog-apex-policy" \
             --output "$work/runtime-overlay.cpio" \

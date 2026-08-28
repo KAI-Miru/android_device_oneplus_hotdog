@@ -28,6 +28,35 @@
       "source_odm_bytes": 151891968,
       "source_odm_sha256": "aac4c35f172358a42b2433a2197359ed224a2cb75a857c505ee79c615e0846c7"
     },
+    "system/lib64/libkeystore-attestation-application-id.so": {
+      "bytes": 76904,
+      "sha256": "af002511be00e9400c4aab876a74a73b3c02f7246d2f0ba42de59d7a8ffab00b",
+      "source_device": "OnePlus 7 Pro (guacamole)",
+      "source_path": "system/lib64/libkeystore-attestation-application-id.so",
+      "source_release": "H.40 stock recovery ramdisk",
+      "compatibility": "Hotdog stock gatekeeperd and its remaining system/lib64 closure are byte-identical to the audited H.40 runtime"
+    },
+    "vendor/firmware/40ms_RTP_170Hz.bin": {
+      "bytes": 985,
+      "sha256": "f1de14505c59a0d91db1f1b2cf7e58a276f949f61946273cefb001d59f780527",
+      "source_commit": "8189a039c1c402d1bb0b433935f5b1fb72a81a27",
+      "source_path": "recovery/root/vendor/firmware/40ms_RTP_170Hz.bin",
+      "source_repository": "arminask/android_device_oneplus_hotdog"
+    },
+    "vendor/firmware/80ms_RTP_170Hz.bin": {
+      "bytes": 1979,
+      "sha256": "98fb90d52ddf8ce2e5825d057c67be0237d78e6c6df439c2d8fbceff136ab4ff",
+      "source_commit": "8189a039c1c402d1bb0b433935f5b1fb72a81a27",
+      "source_path": "recovery/root/vendor/firmware/80ms_RTP_170Hz.bin",
+      "source_repository": "arminask/android_device_oneplus_hotdog"
+    },
+    "vendor/firmware/aw8697_haptic_170.bin": {
+      "bytes": 5852,
+      "sha256": "c77f9450350bd0036674c67cea62fd12784fe00aba5bc9e01f3411782fac57db",
+      "source_commit": "8189a039c1c402d1bb0b433935f5b1fb72a81a27",
+      "source_path": "recovery/root/vendor/firmware/aw8697_haptic_170.bin",
+      "source_repository": "arminask/android_device_oneplus_hotdog"
+    },
     "vendor/lib64/libdisplayconfig.qti.so": {
       "bytes": 105768,
       "sha256": "18b95c53abeb03ab67e8eadd2a2009730109a8f04302d37663176d906b806327",

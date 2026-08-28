@@ -580,7 +580,7 @@ index 7505e56..69cc8d3 100644
      } else {
          for (auto const path : get_ce_key_paths(get_ce_key_directory_path(user_id))) {
              success &= android::vold::destroyKey(path);
-@@ -661,18 +703,205 @@ static std::optional<android::vold::KeyAuthentication> authentication_from_hex(
+@@ -661,18 +703,209 @@ static std::optional<android::vold::KeyAuthentication> authentication_from_hex(
      std::string secret;
      if (!parse_hex(secret_hex, &secret)) return std::optional<android::vold::KeyAuthentication>();
      if (secret.empty()) {
@@ -714,11 +714,15 @@ index 7505e56..69cc8d3 100644
 +    }
 +    if (!h40_open_directory_at(user0.get(), "current", &current) ||
 +        !h40_directory_has_exact_entries(
-+                current.get(), {"encrypted_key", "secdiscardable", "version"},
++                current.get(), {"encrypted_key", "secdiscardable", "stretching", "version"},
 +                "/data/misc/vold/user_keys/ce/0/current")) {
 +        return false;
 +    }
 +    if (!h40_validate_regular_file_at(current.get(), "version", 1, "1")) return false;
++    // Android 11 direct-AES key directories retain the literal "none"
++    // stretching marker.  Android 12 no longer consumes it, but rejecting it
++    // prevents otherwise valid ColorOS upgrades from reaching retrieveKey().
++    if (!h40_validate_regular_file_at(current.get(), "stretching", 4, "none")) return false;
 +    // ColorOS retains Android's standard 16 KiB secdiscardable even though
 +    // the nonempty SP-derived authentication selects direct AES below.
 +    if (!h40_validate_regular_file_at(current.get(), "secdiscardable", 1 << 14,
@@ -757,7 +761,7 @@ index 7505e56..69cc8d3 100644
 +    // path; the validated secdiscardable hash is part of its application ID.
 +    // Keymaster blobs remain forbidden by the exact-entry check above.
 +    if (!validate_h40_modern_user0_ce_layout()) return false;
-+    LOG(INFO) << "[H40 V54 CURRENT] validated ColorOS 16KiB secdiscardable direct-AES layout";
++    LOG(INFO) << "[H40 V55 CURRENT] validated legacy-none ColorOS direct-AES layout";
 +    const std::string key_path =
 +            get_ce_key_current_path(get_ce_key_directory_path(kUser));
 +    KeyBuffer ce_key;
