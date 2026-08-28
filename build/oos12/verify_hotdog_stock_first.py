@@ -85,11 +85,11 @@ def verify_fstab(text: str, name: str) -> None:
         "product": ("/product", ["ext4", "erofs"]),
         "vendor": ("/vendor", ["ext4", "erofs"]),
         "odm": ("/odm", ["ext4", "erofs"]),
-        "my_product": ("/my_product", ["erofs"]),
-        "my_engineering": ("/my_engineering", ["ext4"]),
+        "my_product": ("/my_product", ["ext4", "erofs"]),
+        "my_engineering": ("/my_engineering", ["ext4", "erofs"]),
     }
     logical = [row for row in rows if "logical" in row[-1].split(",")]
-    require(len(logical) == 12, f"{name} has the wrong logical-row count")
+    require(len(logical) == 14, f"{name} has the wrong logical-row count")
     for partition, (mount, filesystems) in expected.items():
         selected = [row for row in logical if row[0] == partition]
         require(
@@ -104,13 +104,40 @@ def verify_fstab(text: str, name: str) -> None:
             all("slotselect" in row[-1].split(",") for row in selected),
             f"{name} lost slotselect for {partition}",
         )
+    physical = {
+        ("/dev/block/bootdevice/by-name/metadata", "/metadata", "ext4"),
+        ("/dev/block/bootdevice/by-name/op2", "/cache", "ext4"),
+        ("/dev/block/bootdevice/by-name/userdata", "/data", "ext4"),
+        ("/dev/block/bootdevice/by-name/misc", "/misc", "emmc"),
+        ("/dev/block/bootdevice/by-name/boot", "/boot", "emmc"),
+        ("/dev/block/bootdevice/by-name/recovery", "/recovery", "emmc"),
+    }
     require(
-        any(row[:3] == ["/dev/block/bootdevice/by-name/recovery", "/recovery", "emmc"] for row in rows),
-        f"{name} lost the OnePlus recovery-partition row",
+        {(row[0], row[1], row[2]) for row in rows if row not in logical} == physical,
+        f"{name} does not match the audited physical partition table",
+    )
+    forbidden_mounts = {
+        "/special_preload",
+        "/external_sd",
+        "/usb_otg",
+        "/opporeserve",
+        "/persist",
+        "/reserve4",
+        "/apdp",
+        "/devinfo",
+    }
+    require(
+        forbidden_mounts.isdisjoint({row[1] for row in rows}),
+        f"{name} exposes a phantom or duplicate mount",
     )
     require(
-        any(row[:3] == ["/dev/block/bootdevice/by-name/userdata", "/data", "ext4"] for row in rows),
-        f"{name} lost the OnePlus userdata row",
+        all(
+            flag not in row[-1].split(",")
+            for row in rows
+            for flag in ("first_stage_mount", "latemount")
+        )
+        and "reservedsize=" not in text,
+        f"{name} retains Android first-stage-only recovery flags",
     )
 
 
@@ -135,8 +162,13 @@ def main() -> None:
         APEX_POLICY_RULE,
         APEX_POLICY_TOOL,
         FIRMWARE_FILES,
+        QSEE_PLUGIN_FILES,
+        QSEE_PLUGIN_NEEDED,
         STOCK_CREDENTIAL_HELPER,
         STOCK_INTERPRETER,
+        TZDATA_BYTES,
+        TZDATA_PATH,
+        TZDATA_SHA256,
         elf_interpreter,
     )
     from make_hotdog_runtime_overlay import (  # noqa: PLC0415
@@ -398,6 +430,21 @@ def main() -> None:
         b"wait /dev/block/bootdevice/by-name/modem" not in init,
         "stock five-second modem wait remains",
     )
+    require(b"    start healthd\n" not in init, "premature stock healthd start remains")
+    require(b"mount cgroup none /acct cpuacct" not in init, "legacy cpuacct mount remains")
+    require(
+        b"    writepid /dev/cpuset/system-background/tasks" not in init.splitlines(),
+        "stock services still write to the missing recovery cpuset",
+    )
+    require(
+        b"on property:sys.powerctl=*" not in init,
+        "invalid stock powerctl action remains",
+    )
+    for service in (b"gatekeeperd", b"vndservicemanager", b"irsc_util", b"wpa_supplicant"):
+        start = init.index(b"service " + service + b" ")
+        end = init.find(b"\nservice ", start + 1)
+        block = init[start : len(init) if end < 0 else end]
+        require(b"\n    disabled\n" in block, f"stock service is not explicit-start only: {service!r}")
     require_marker(init, b"mkdir /config/usb_gadget/g1/functions/mtp.gs0", "MTP configfs function")
     require_marker(init, b"Configfs was mounted and initialized by the stock init action", "single configfs mount")
     require(
@@ -440,6 +487,10 @@ def main() -> None:
     require_marker(keystore_rc, b"service keystore2 /system/tw/bin/keystore2", "private Keystore2 route")
     require_marker(keystore_rc, b"    disabled", "disabled Keystore2 service")
     require(b"on late-init" not in keystore_rc and b"on boot" not in keystore_rc, "Keystore2 starts automatically")
+    require(
+        b"writepid /dev/cpuset/foreground/tasks" not in keystore_rc,
+        "Keystore2 still writes to a missing recovery cpuset",
+    )
 
     service_contexts = require_data(final_index, "system/etc/selinux/plat_service_contexts").decode("utf-8")
     for service in (
@@ -463,6 +514,41 @@ def main() -> None:
         verify_fstab(require_data(final_index, name).decode("utf-8"), name)
     twrp_flags = require_data(final_index, "etc/twrp.flags").decode("utf-8")
     require("/recovery" in twrp_flags and "flashimg=1" in twrp_flags, "TWRP flags lack recovery image support")
+    flag_rows = [
+        line.split()
+        for line in twrp_flags.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    expected_flag_mounts = {
+        "/recovery",
+        "/boot",
+        "/firmware",
+        "/modem",
+        "/bluetooth",
+        "/dsp",
+        "/dtbo",
+        "/efs1",
+        "/efs2",
+        "/efsc",
+        "/efsg",
+        "/metadata",
+        "/usbstorage",
+    }
+    require(
+        {row[0] for row in flag_rows} == expected_flag_mounts,
+        "TWRP flags do not match the audited Hotdog partition inventory",
+    )
+    require(
+        sum(row[0] == "/usbstorage" for row in flag_rows) == 1,
+        "TWRP flags have duplicate USB storage entries",
+    )
+    modem_row = next(row for row in flag_rows if row[0] == "/modem")
+    for child in ("/bluetooth", "/dsp"):
+        child_row = next(row for row in flag_rows if row[0] == child)
+        require(
+            "subpartitionof=/modem" in child_row[-1] and flag_rows.index(modem_row) < flag_rows.index(child_row),
+            f"{child} lost its modem parent relationship",
+        )
     props = require_data(final_index, "prop.default").decode("utf-8")
     for setting in ("ro.secure=0", "ro.adb.secure=0", "ro.debuggable=1", "persist.sys.usb.config=adb", "ro.boot.dynamic_partitions=true"):
         require(setting in props, f"missing recovery property: {setting}")
@@ -482,6 +568,32 @@ def main() -> None:
         data = require_data(final_index, f"vendor/firmware/{filename}")
         require(len(data) == expected_bytes, f"wrong haptics firmware size: {filename}")
         require(sha256(data) == expected_sha256, f"wrong haptics firmware digest: {filename}")
+    tzdata = require_data(final_index, TZDATA_PATH)
+    require(len(tzdata) == TZDATA_BYTES, "wrong tzdata size")
+    require(sha256(tzdata) == TZDATA_SHA256, "wrong tzdata digest")
+    for filename, (expected_bytes, expected_sha256) in QSEE_PLUGIN_FILES.items():
+        system_copy = require_data(final_index, f"system/lib64/{filename}")
+        vendor_copy = require_data(final_index, f"vendor/lib64/{filename}")
+        require(system_copy == vendor_copy, f"QSEE plugin copies differ: {filename}")
+        require(len(system_copy) == expected_bytes, f"wrong QSEE plugin size: {filename}")
+        require(sha256(system_copy) == expected_sha256, f"wrong QSEE plugin digest: {filename}")
+        records = [
+            record
+            for record in stock_patch["records"]
+            if record.get("target") in {
+                f"system/lib64/{filename}",
+                f"vendor/lib64/{filename}",
+            }
+        ]
+        require(len(records) == 2, f"QSEE plugin manifest copies are incomplete: {filename}")
+        require(
+            all(
+                record.get("soname") == filename
+                and record.get("dt_needed") == QSEE_PLUGIN_NEEDED[filename]
+                for record in records
+            ),
+            f"QSEE plugin ELF audit is missing or changed: {filename}",
+        )
 
     report = {
         "format": 1,
@@ -550,9 +662,11 @@ def main() -> None:
             "stock_sepolicy_exact_and_apex_rule_synchronous": True,
             "usb_configfs_routes_idempotent_with_mtp": True,
             "root_cgroup_configuration_present": True,
-            "hotdog_haptics_firmware_present": True,
-            "irrelevant_stock_init_delays_removed": True,
-            "dynamic_ab_fstab_and_recovery_partition_present": True,
+            "hotdog_haptics_firmware_complete": True,
+            "timezone_database_present": True,
+            "qsee_optional_plugins_visible": True,
+            "irrelevant_stock_init_noise_removed": True,
+            "inventory_audited_dynamic_ab_mount_tables": True,
             "avb_footer_structurally_valid": True,
         },
     }

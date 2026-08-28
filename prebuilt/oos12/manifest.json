@@ -50,6 +50,13 @@
       "source_path": "recovery/root/vendor/firmware/80ms_RTP_170Hz.bin",
       "source_repository": "arminask/android_device_oneplus_hotdog"
     },
+    "vendor/firmware/aw8697_rtp.bin": {
+      "bytes": 72000,
+      "sha256": "36438cefa7206dac9ef150b613418d5912c3eb69ed4e0084798602985b43470d",
+      "source_commit": "8189a039c1c402d1bb0b433935f5b1fb72a81a27",
+      "source_path": "recovery/root/vendor/firmware/aw8697_rtp.bin",
+      "source_repository": "arminask/android_device_oneplus_hotdog"
+    },
     "vendor/firmware/aw8697_haptic_170.bin": {
       "bytes": 5852,
       "sha256": "c77f9450350bd0036674c67cea62fd12784fe00aba5bc9e01f3411782fac57db",
@@ -64,6 +71,20 @@
       "source_path": "recovery/root/vendor/lib64/libdisplayconfig.qti.so",
       "source_repository": "arminask/android_device_oneplus_hotdog",
       "source_release": "OxygenOS F.22 / LineageOS 20 blob refresh"
+    },
+    "vendor/lib64/libops.so": {
+      "bytes": 24448,
+      "sha256": "9f59345ecb4e8957b30dc6eaeb50e25e494fdfd8fc6e0c780651fda9f6588dc5",
+      "source_commit": "8189a039c1c402d1bb0b433935f5b1fb72a81a27",
+      "source_path": "recovery/root/vendor/lib64/libops.so",
+      "source_repository": "arminask/android_device_oneplus_hotdog"
+    },
+    "vendor/lib64/libspl.so": {
+      "bytes": 11232,
+      "sha256": "6be8b4a2944d427398f0cc5ca2f6e11a70327f32c0d78ac209720b074f297d89",
+      "source_commit": "8189a039c1c402d1bb0b433935f5b1fb72a81a27",
+      "source_path": "recovery/root/vendor/lib64/libspl.so",
+      "source_repository": "arminask/android_device_oneplus_hotdog"
     },
     "tools/hotdog-apex-policy": {
       "bytes": 356584,

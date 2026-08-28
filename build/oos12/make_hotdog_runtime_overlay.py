@@ -24,7 +24,7 @@ POLICY_TARGET = "system/bin/hotdog_apex_policy"
 POLICY_BYTES = 356_584
 POLICY_SHA256 = "9837db9db475eb74b6715f081768cb6a1f2fb5a2b2ac15755686062501bace27"
 POLICY_INTERPRETER = "/system/bin/linker64"
-POLICY_RULE = "allow kernel tmpfs file read"
+POLICY_RULE = "allow kernel recovery fd use"
 POLICY_SOURCE_APK_SHA256 = "e0d32d2123532860f97123d927b1bb86c4e08e6fd8a48bfc6b5bee0afae9ebd5"
 POLICY_SOURCE_URL = "https://github.com/topjohnwu/Magisk/releases/tag/v30.7"
 

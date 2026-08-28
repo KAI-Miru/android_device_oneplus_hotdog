@@ -1061,9 +1061,9 @@ index 51fc4f6..6f27e51 100644
          // DeleteUpgradedKey(keymaster, upgraded_blob_file);
      if (!readFileToString(blob_file, &blob)) return KeymasterOperation();
      // }
-+    LOG(ERROR) << "[H40 KMCOMPAT] begin: calling Keymaster begin for metadata blob";
++    LOG(INFO) << "[H40 KMCOMPAT] begin: calling Keymaster begin for metadata blob";
      auto opHandle = keymaster.begin(blob, inParams, outParams);
-+    LOG(ERROR) << "[H40 KMCOMPAT] begin: returned valid=" << static_cast<bool>(opHandle)
++    LOG(INFO) << "[H40 KMCOMPAT] begin: returned valid=" << static_cast<bool>(opHandle)
 +               << " error=" << static_cast<int32_t>(opHandle.getErrorCode());
      if (!opHandle) return opHandle;
  
@@ -1077,9 +1077,9 @@ index 51fc4f6..6f27e51 100644
                                   const std::string& secdiscardable_hash) {
      std::string appId = secdiscardable_hash + auth.secret;
  
-+    LOG(ERROR) << "[H40 KMCOMPAT] appId: acquiring storage-binding state";
++    LOG(INFO) << "[H40 KMCOMPAT] appId: acquiring storage-binding state";
 +    auto& storage_binding_info = GetStorageBindingInfo();
-+    LOG(ERROR) << "[H40 KMCOMPAT] appId: storage-binding state ready, state="
++    LOG(INFO) << "[H40 KMCOMPAT] appId: storage-binding state ready, state="
 +               << static_cast<int32_t>(storage_binding_info.state);
      const std::lock_guard<std::mutex> scope_lock(storage_binding_info.guard);
      switch (storage_binding_info.state) {
@@ -1088,7 +1088,7 @@ index 51fc4f6..6f27e51 100644
              // noop
              break;
      }
-+    LOG(ERROR) << "[H40 KMCOMPAT] appId: complete";
++    LOG(INFO) << "[H40 KMCOMPAT] appId: complete";
      return appId;
  }
  
@@ -1096,16 +1096,16 @@ index 51fc4f6..6f27e51 100644
      std::string encryptedMessage;
      if (!readFileToString(dir + "/" + kFn_encrypted_key, &encryptedMessage)) return false;
      if (auth.usesKeymaster()) {
-+        LOG(ERROR) << "[H40 KMCOMPAT] retrieve: constructing Keymaster";
++        LOG(INFO) << "[H40 KMCOMPAT] retrieve: constructing Keymaster";
          Keymaster keymaster;
-+        LOG(ERROR) << "[H40 KMCOMPAT] retrieve: constructor returned valid="
++        LOG(INFO) << "[H40 KMCOMPAT] retrieve: constructor returned valid="
 +                   << static_cast<bool>(keymaster);
          if (!keymaster) return false;
          km::AuthorizationSet keyParams = beginParams(appId);
-+        LOG(ERROR) << "[H40 KMCOMPAT] retrieve: starting metadata-key decrypt";
++        LOG(INFO) << "[H40 KMCOMPAT] retrieve: starting metadata-key decrypt";
          if (!decryptWithKeymasterKey(keymaster, dir, keyParams, encryptedMessage, key))
              return false;
-+        LOG(ERROR) << "[H40 KMCOMPAT] retrieve: metadata-key decrypt complete";
++        LOG(INFO) << "[H40 KMCOMPAT] retrieve: metadata-key decrypt complete";
      } else {
          if (!decryptWithoutKeymaster(appId, encryptedMessage, key)) return false;
      }
@@ -1509,9 +1509,9 @@ index 4781d91..18fc096 100644
  Keymaster::Keymaster() {
 -    ::ndk::SpAIBinder binder(AServiceManager_waitForService(keystore2_service_name));
 -    auto keystore2Service = ks2::IKeystoreService::fromBinder(binder);
-+    LOG(ERROR) << "[H40 KMCOMPAT] constructor: enumerating Keymaster 4.x devices";
++    LOG(INFO) << "[H40 KMCOMPAT] constructor: enumerating Keymaster 4.x devices";
 +    auto devices = KmDevice::enumerateAvailableDevices();
-+    LOG(ERROR) << "[H40 KMCOMPAT] constructor: enumerated " << devices.size() << " device(s)";
++    LOG(INFO) << "[H40 KMCOMPAT] constructor: enumerated " << devices.size() << " device(s)";
 +    if (devices.empty()) {
 +        LOG(ERROR) << "[H40 KMCOMPAT] constructor: no Keymaster devices";
 +        return;
@@ -1520,10 +1520,10 @@ index 4781d91..18fc096 100644
 -    if (!keystore2Service) {
 -        LOG(ERROR) << "Vold unable to connect to keystore2.";
 +    if (!hmacKeyGenerated) {
-+        LOG(ERROR) << "[H40 KMCOMPAT] constructor: starting standard HMAC agreement";
++        LOG(INFO) << "[H40 KMCOMPAT] constructor: starting standard HMAC agreement";
 +        KmDevice::performHmacKeyAgreement(devices);
 +        hmacKeyGenerated = true;
-+        LOG(ERROR) << "[H40 KMCOMPAT] constructor: HMAC agreement complete";
++        LOG(INFO) << "[H40 KMCOMPAT] constructor: HMAC agreement complete";
 +    }
 +
 +    for (auto& dev : devices) {
@@ -1552,7 +1552,7 @@ index 4781d91..18fc096 100644
 -        LOG(ERROR) << "Vold unable to get security level from keystore2.";
 +    const auto& version = mDevice->halVersion();
 +    mSecurityLevel = version.securityLevel;
-+    LOG(ERROR) << "[H40 KMCOMPAT] constructor: selected " << version.keymasterName
++    LOG(INFO) << "[H40 KMCOMPAT] constructor: selected " << version.keymasterName
 +               << " from " << version.authorName
 +               << ", security=" << static_cast<int32_t>(version.securityLevel)
 +               << ", HAL=" << mDevice->descriptor() << "/" << mDevice->instanceName();
@@ -1698,7 +1698,7 @@ index 4781d91..18fc096 100644
 +    }
 +
 +    auto oldBlobView = UnwrapKs2KeyBlob(oldKey);
-+    LOG(ERROR) << "[H40 BLOBPREFIX] upgrade: storedLen=" << oldKey.size()
++    LOG(INFO) << "[H40 BLOBPREFIX] upgrade: storedLen=" << oldKey.size()
 +               << " prefixPresent=" << oldBlobView.prefixPresent
 +               << " softKeyMint=" << oldBlobView.softKeyMint
 +               << " hidlLen=" << oldBlobView.raw.size();
@@ -1744,7 +1744,7 @@ index 4781d91..18fc096 100644
 +            std::string rawUpgraded(
 +                    reinterpret_cast<const char*>(&upgradedKeyBlob[0]), upgradedKeyBlob.size());
 +            *newKey = WrapKs2HardwareKeyBlob(rawUpgraded);
-+            LOG(ERROR) << "[H40 BLOBPREFIX] upgrade: rawUpgradedLen=" << rawUpgraded.size()
++            LOG(INFO) << "[H40 BLOBPREFIX] upgrade: rawUpgradedLen=" << rawUpgraded.size()
 +                       << " returnedStoredLen=" << newKey->size();
 +        }
      };
@@ -1842,7 +1842,7 @@ index 4781d91..18fc096 100644
 +    LOG(DEBUG) << "[Keymaster] begin: Purpose = " << static_cast<int32_t>(purpose);
 +
 +    auto blobView = UnwrapKs2KeyBlob(key);
-+    LOG(ERROR) << "[H40 BLOBPREFIX] begin: storedLen=" << key.size()
++    LOG(INFO) << "[H40 BLOBPREFIX] begin: storedLen=" << key.size()
 +               << " prefixPresent=" << blobView.prefixPresent
 +               << " softKeyMint=" << blobView.softKeyMint
 +               << " hidlLen=" << blobView.raw.size();
@@ -1881,7 +1881,7 @@ index 4781d91..18fc096 100644
 +        beginHidlParams.push_back(param);
 +    }
 +
-+    LOG(ERROR) << "[H40 BLOBPROBE] begin bridge: purpose="
++    LOG(INFO) << "[H40 BLOBPROBE] begin bridge: purpose="
 +               << static_cast<int32_t>(purpose)
 +               << " storedBlobLen=" << key.size()
 +               << " hidlBlobLen=" << blobView.raw.size()
@@ -1908,7 +1908,7 @@ index 4781d91..18fc096 100644
 +                    characteristicsSwCount = chars.softwareEnforced.size();
 +                }
 +            });
-+    LOG(ERROR) << "[H40 BLOBPROBE] characteristics: transportOk="
++    LOG(INFO) << "[H40 BLOBPROBE] characteristics: transportOk="
 +               << characteristicsTransport.isOk()
 +               << " error=" << static_cast<int32_t>(characteristicsError)
 +               << " hwParams=" << characteristicsHwCount
@@ -2017,7 +2017,7 @@ index 4781d91..18fc096 100644
 +           static_cast<int32_t>(purpose), key.size(), inParams.size());
 +
 +    auto blobView = UnwrapKs2KeyBlob(key);
-+    LOG(ERROR) << "[H40 BLOBPREFIX] auth begin: storedLen=" << key.size()
++    LOG(INFO) << "[H40 BLOBPREFIX] auth begin: storedLen=" << key.size()
 +               << " prefixPresent=" << blobView.prefixPresent
 +               << " softKeyMint=" << blobView.softKeyMint
 +               << " hidlLen=" << blobView.raw.size();
@@ -2039,7 +2039,7 @@ index 4781d91..18fc096 100644
 +        }
 +        beginHidlParams.push_back(param);
      }
-+    LOG(ERROR) << "[H40 BLOBPROBE] auth begin bridge: purpose="
++    LOG(INFO) << "[H40 BLOBPROBE] auth begin bridge: purpose="
 +               << static_cast<int32_t>(purpose)
 +               << " storedBlobLen=" << key.size()
 +               << " hidlBlobLen=" << blobView.raw.size()

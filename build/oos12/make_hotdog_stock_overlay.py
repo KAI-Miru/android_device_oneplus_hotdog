@@ -37,16 +37,65 @@ LOGICAL_ROWS = (
     ("product", "/product", ("ext4", "erofs")),
     ("vendor", "/vendor", ("ext4", "erofs")),
     ("odm", "/odm", ("ext4", "erofs")),
-    ("my_product", "/my_product", ("erofs",)),
-    ("my_engineering", "/my_engineering", ("ext4",)),
+    ("my_product", "/my_product", ("ext4", "erofs")),
+    ("my_engineering", "/my_engineering", ("ext4", "erofs")),
 )
 
 STOCK_CREDENTIAL_HELPER = "system/bin/oplus_h40_credential_helper"
 STOCK_INTERPRETER = "/system/bin/linker64"
 APEX_POLICY_TOOL = "/system/bin/hotdog_apex_policy"
-APEX_POLICY_RULE = "allow kernel tmpfs file read"
+APEX_POLICY_RULE = "allow kernel recovery fd use"
+
+EARLY_HEALTHD_START = "    start healthd\n"
+LEGACY_CPUACCT_MOUNT = "    mount cgroup none /acct cpuacct\n"
+SYSTEM_BACKGROUND_WRITEPID = "    writepid /dev/cpuset/system-background/tasks\n"
+FOREGROUND_WRITEPID = "    writepid /dev/cpuset/foreground/tasks\n"
+INVALID_POWERCTL_ACTION = "on property:sys.powerctl=*\n   powerctl ${sys.powerctl}\n\n"
+
+GATEKEEPERD_SERVICE = """service gatekeeperd /system/bin/gatekeeperd /data/misc/gatekeeper
+    seclabel u:r:recovery:s0
+"""
+GATEKEEPERD_SERVICE_DISABLED = """service gatekeeperd /system/bin/gatekeeperd /data/misc/gatekeeper
+    disabled
+    seclabel u:r:recovery:s0
+"""
+VNDSERVICEMANAGER_SERVICE = """service vndservicemanager /vendor/bin/vndservicemanager /dev/vndbinder
+    seclabel u:r:recovery:s0
+"""
+VNDSERVICEMANAGER_SERVICE_DISABLED = """service vndservicemanager /vendor/bin/vndservicemanager /dev/vndbinder
+    disabled
+    seclabel u:r:recovery:s0
+"""
+IRSC_UTIL_SERVICE = """service irsc_util /system/bin/irsc_util "/vendor/etc/sec_config"
+    user root
+    oneshot
+    seclabel u:r:recovery:s0
+"""
+IRSC_UTIL_SERVICE_DISABLED = """service irsc_util /system/bin/irsc_util "/vendor/etc/sec_config"
+    disabled
+    user root
+    oneshot
+    seclabel u:r:recovery:s0
+"""
+WPA_SUPPLICANT_SERVICE = (
+    "service wpa_supplicant /system/bin/wpa_supplicant \\\n"
+    "    -Dnl80211 -iwlan0 -dd -O/data/misc/wifi/sockets \\\n"
+    "    -c/data/misc/wifi/wpa_supplicant.conf\n"
+    "    seclabel u:r:recovery:s0\n"
+)
+WPA_SUPPLICANT_SERVICE_DISABLED = (
+    "service wpa_supplicant /system/bin/wpa_supplicant \\\n"
+    "    -Dnl80211 -iwlan0 -dd -O/data/misc/wifi/sockets \\\n"
+    "    -c/data/misc/wifi/wpa_supplicant.conf\n"
+    "    disabled\n"
+    "    seclabel u:r:recovery:s0\n"
+)
 
 FIRMWARE_FILES = {
+    "aw8697_rtp.bin": (
+        72_000,
+        "36438cefa7206dac9ef150b613418d5912c3eb69ed4e0084798602985b43470d",
+    ),
     "aw8697_haptic_170.bin": (
         5_852,
         "c77f9450350bd0036674c67cea62fd12784fe00aba5bc9e01f3411782fac57db",
@@ -61,6 +110,46 @@ FIRMWARE_FILES = {
     ),
 }
 
+QSEE_PLUGIN_FILES = {
+    "libspl.so": (
+        11_232,
+        "6be8b4a2944d427398f0cc5ca2f6e11a70327f32c0d78ac209720b074f297d89",
+    ),
+    "libops.so": (
+        24_448,
+        "9f59345ecb4e8957b30dc6eaeb50e25e494fdfd8fc6e0c780651fda9f6588dc5",
+    ),
+}
+
+QSEE_PLUGIN_NEEDED = {
+    "libspl.so": [
+        "libcutils.so",
+        "liblog.so",
+        "libQSEEComAPI.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so",
+    ],
+    "libops.so": [
+        "libutils.so",
+        "libcutils.so",
+        "libQSEEComAPI.so",
+        "liblog.so",
+        "libdrm.so",
+        "libhidlbase.so",
+        "libdisplayconfig.qti.so",
+        "libc++.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so",
+    ],
+}
+
+TZDATA_PATH = "system/usr/share/zoneinfo/tzdata"
+TZDATA_BYTES = 491_837
+TZDATA_SHA256 = "13d8d2f8ff68377530a61bc79791c474f93eef08879ca4478d2c39d5d2f8d12e"
+
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -71,6 +160,21 @@ def decode(relative: str, data: bytes) -> str:
         return data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise SystemExit(f"expected UTF-8 text in {relative}") from exc
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one exact anchor, found {count}")
+    return text.replace(old, new, 1)
+
+
+def drop_exact_lines(text: str, line: str, expected: int, label: str) -> str:
+    lines = text.splitlines(keepends=True)
+    count = sum(candidate == line for candidate in lines)
+    if count != expected:
+        raise SystemExit(f"{label}: expected {expected} exact anchors, found {count}")
+    return "".join(candidate for candidate in lines if candidate != line)
 
 
 def elf_interpreter(blob: bytes) -> str:
@@ -143,6 +247,46 @@ def patch_init(text: str) -> str:
         modem_wait,
         "    # The logical modem node is not required before recovery QSEE starts.\n",
         1,
+    )
+
+    text = replace_once(
+        text,
+        EARLY_HEALTHD_START,
+        "",
+        "premature health service start",
+    )
+    text = replace_once(
+        text,
+        LEGACY_CPUACCT_MOUNT,
+        "",
+        "duplicate cpuacct mount",
+    )
+    text = drop_exact_lines(
+        text,
+        SYSTEM_BACKGROUND_WRITEPID,
+        3,
+        "missing recovery cpuset writes",
+    )
+    for source, target, label in (
+        (GATEKEEPERD_SERVICE, GATEKEEPERD_SERVICE_DISABLED, "gatekeeper explicit-start service"),
+        (
+            VNDSERVICEMANAGER_SERVICE,
+            VNDSERVICEMANAGER_SERVICE_DISABLED,
+            "unused vendor service manager",
+        ),
+        (IRSC_UTIL_SERVICE, IRSC_UTIL_SERVICE_DISABLED, "unused IRSC utility"),
+        (
+            WPA_SUPPLICANT_SERVICE,
+            WPA_SUPPLICANT_SERVICE_DISABLED,
+            "unused recovery Wi-Fi service",
+        ),
+    ):
+        text = replace_once(text, source, target, label)
+    text = replace_once(
+        text,
+        INVALID_POWERCTL_ACTION,
+        "",
+        "invalid stock powerctl action",
     )
 
     # Stock init owns configfs in the stock-first ramdisk.  Make every route
@@ -261,9 +405,9 @@ on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:s
 """
     text = text[:configfs_start] + configfs + text[configfs_end:]
 
-    # The stock recovery policy blocks the kernel domain from reading the APEX
-    # image staged on recovery tmpfs. Apply only that live rule synchronously
-    # before class_start default; the OEM policy file stays byte-exact.
+    # The stock recovery policy blocks the kernel from using recovery's loop
+    # file descriptor during APEX image setup. Apply only that live rule
+    # synchronously before class_start default; the OEM policy stays byte-exact.
     class_anchor = "    class_start default\n"
     policy_command = (
         f'    exec u:r:recovery:s0 root root -- {APEX_POLICY_TOOL} --live "{APEX_POLICY_RULE}"\n'
@@ -313,45 +457,52 @@ def patch_linker_config(text: str) -> str:
 
 
 def patch_dynamic_fstab(text: str, relative: str) -> str:
-    lines = text.splitlines(keepends=True)
-    newline = "\r\n" if "\r\n" in text else "\n"
-    logical_positions: list[int] = []
-    seen = set()
-    for number, line in enumerate(lines):
+    rows = []
+    for line in text.splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        fields = stripped.split()
-        if len(fields) < 5:
-            continue
-        flags = set(fields[-1].split(","))
-        if "logical" in flags:
-            logical_positions.append(number)
-            seen.add(fields[0])
+        if stripped and not stripped.startswith("#"):
+            rows.append(stripped.split())
+    stock_logical = {
+        row[0]
+        for row in rows
+        if len(row) >= 5 and "logical" in row[-1].split(",")
+    }
     required_stock = {"system", "vendor", "product", "my_product", "my_engineering"}
-    if seen != required_stock:
-        raise SystemExit(
-            f"unexpected stock logical row set in {relative}: {sorted(seen)}"
-        )
+    if stock_logical != required_stock:
+        raise SystemExit(f"unexpected stock logical row set in {relative}: {sorted(stock_logical)}")
+    required_physical = {"/metadata", "/data", "/cache", "/boot", "/recovery", "/misc"}
+    stock_mounts = {row[1] for row in rows if len(row) >= 3}
+    if not required_physical.issubset(stock_mounts):
+        raise SystemExit(f"stock physical rows changed in {relative}: {sorted(stock_mounts)}")
 
-    insert_at = min(logical_positions)
-    removed = set(logical_positions)
-    generated = ["# TWRP logical partitions; OnePlus physical/recovery rows below are preserved." + newline]
+    generated = [
+        "# Android recovery fstab for Hotdog's dynamic A/B layout.\n",
+        "# Generated from the on-device OOS12 partition inventory. Optional ColorOS\n",
+        "# logical partitions stay hidden; stock init owns /mnt/vendor/persist.\n",
+        "\n",
+        "#<src>                   <mnt_point>       <type>  <mnt_flags>                <fs_mgr_flags>\n",
+    ]
     for partition, mount, filesystems in LOGICAL_ROWS:
         for filesystem in filesystems:
             options = "ro,barrier=1,discard" if filesystem == "ext4" else "ro"
             generated.append(
                 f"{partition:<24} {mount:<16} {filesystem:<7} {options:<25} "
-                f"wait,slotselect,logical{newline}"
+                "wait,slotselect,logical\n"
             )
-
-    output: list[str] = []
-    for number, line in enumerate(lines):
-        if number == insert_at:
-            output.extend(generated)
-        if number not in removed:
-            output.append(line)
-    result = "".join(output)
+    generated.extend(
+        (
+            "\n",
+            "/dev/block/bootdevice/by-name/metadata  /metadata  ext4  noatime,nosuid,nodev,discard  wait,check,formattable\n",
+            "/dev/block/bootdevice/by-name/op2       /cache     ext4  noatime,nosuid,nodev,barrier=1,data=ordered  wait,check\n",
+            "/dev/block/bootdevice/by-name/userdata  /data      ext4  noatime,nosuid,nodev,barrier=1,noauto_da_alloc,discard,inlinecrypt  wait,check,formattable,fileencryption=ice,keydirectory=/metadata/vold/metadata_encryption,quota\n",
+            "\n",
+            "# update_engine requires misc to discover the boot device.\n",
+            "/dev/block/bootdevice/by-name/misc      /misc      emmc  defaults  defaults\n",
+            "/dev/block/bootdevice/by-name/boot      /boot      emmc  defaults  slotselect\n",
+            "/dev/block/bootdevice/by-name/recovery  /recovery  emmc  defaults  slotselect\n",
+        )
+    )
+    result = "".join(generated)
 
     active = []
     for line in result.splitlines():
@@ -370,6 +521,24 @@ def patch_dynamic_fstab(text: str, relative: str) -> str:
             raise SystemExit(f"wrong filesystem alternatives for {partition} in {relative}")
         if any("slotselect" not in row[-1].split(",") for row in rows):
             raise SystemExit(f"{partition} lost slotselect in {relative}")
+    forbidden = {
+        "/special_preload",
+        "/external_sd",
+        "/usb_otg",
+        "/opporeserve",
+        "/persist",
+        "/reserve4",
+        "/apdp",
+        "/devinfo",
+    }
+    active_mounts = {row[1] for row in active}
+    active_mounts.update(
+        row[1]
+        for row in (line.split() for line in result.splitlines())
+        if len(row) >= 3 and not row[0].startswith("#")
+    )
+    if not forbidden.isdisjoint(active_mounts):
+        raise SystemExit(f"phantom or duplicate mount survived in {relative}")
     return result
 
 
@@ -412,15 +581,19 @@ def patch_adb_properties(text: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--newc-dir", type=Path, required=True)
+    parser.add_argument("--elf-audit-dir", type=Path, required=True)
     parser.add_argument("--stock-cpio", type=Path, required=True)
     parser.add_argument("--twrp-cpio", type=Path, required=True)
     parser.add_argument("--firmware-dir", type=Path, required=True)
+    parser.add_argument("--qsee-lib-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
 
     sys.path.insert(0, str(args.newc_dir.resolve()))
+    sys.path.insert(0, str(args.elf_audit_dir.resolve()))
     import newc  # noqa: PLC0415
+    import elf_audit  # noqa: PLC0415
 
     stock_entries = newc.read(args.stock_cpio)
     stock = newc.index(stock_entries)
@@ -487,6 +660,10 @@ def main() -> None:
         # The parent adapter proves its mappings before sending a credential;
         # relocating it under /system/tw makes that fail closed.
         STOCK_CREDENTIAL_HELPER: STOCK_CREDENTIAL_HELPER,
+        "system/usr": "system/usr",
+        "system/usr/share": "system/usr/share",
+        "system/usr/share/zoneinfo": "system/usr/share/zoneinfo",
+        TZDATA_PATH: TZDATA_PATH,
     }
     next_ino = max(entry.ino for entry in stock_entries) + 1
     for target_name, source_name in additions.items():
@@ -516,6 +693,12 @@ def main() -> None:
                 raise SystemExit(
                     f"credential helper uses {interpreter!r}, expected {STOCK_INTERPRETER!r}"
                 )
+        if target_name in {"system/usr", "system/usr/share", "system/usr/share/zoneinfo"}:
+            if source.mode & 0o170000 != 0o040000:
+                raise SystemExit(f"timezone parent is not a directory: {target_name}")
+        if target_name == TZDATA_PATH:
+            if len(source.data) != TZDATA_BYTES or sha256(source.data) != TZDATA_SHA256:
+                raise SystemExit("TWRP tzdata identity mismatch")
         added = replace(source, name=target_name, ino=next_ino)
         next_ino += 1
         overlay.append(added)
@@ -587,6 +770,50 @@ def main() -> None:
             }
         )
 
+    qsee_template = stock.get("system/lib64/libc.so")
+    if qsee_template is None or qsee_template.mode & 0o170000 != 0o100000:
+        raise SystemExit("Hotdog stock lacks a QSEE library metadata template")
+    for filename, (expected_bytes, expected_sha256) in QSEE_PLUGIN_FILES.items():
+        source_path = args.qsee_lib_dir / filename
+        source_data = source_path.read_bytes()
+        if len(source_data) != expected_bytes or sha256(source_data) != expected_sha256:
+            raise SystemExit(f"Hotdog QSEE plugin identity mismatch: {filename}")
+        if source_data[:4] != b"\x7fELF":
+            raise SystemExit(f"Hotdog QSEE plugin is not ELF: {filename}")
+        try:
+            parsed = elf_audit.Elf(source_path)
+        except (OSError, elf_audit.ElfError) as exc:
+            raise SystemExit(f"cannot audit Hotdog QSEE plugin {filename}: {exc}") from exc
+        if parsed.bits != 64 or parsed.e_machine != 183 or parsed.soname != filename:
+            raise SystemExit(f"Hotdog QSEE plugin has the wrong ELF identity: {filename}")
+        if parsed.needed != QSEE_PLUGIN_NEEDED[filename]:
+            raise SystemExit(f"Hotdog QSEE plugin dependency set changed: {filename}")
+        for directory in ("system/lib64", "vendor/lib64"):
+            target_name = f"{directory}/{filename}"
+            if target_name in stock:
+                raise SystemExit(f"Hotdog stock unexpectedly contains {target_name}")
+            plugin = replace(
+                qsee_template,
+                name=target_name,
+                ino=next_ino,
+                nlink=1,
+                data=source_data,
+            )
+            next_ino += 1
+            overlay.append(plugin)
+            records.append(
+                {
+                    "kind": "addition",
+                    "source": str(source_path.resolve()),
+                    "source_kind": "pinned_hotdog_a12_qsee_plugin",
+                    "target": target_name,
+                    "target_sha256": expected_sha256,
+                    "target_bytes": expected_bytes,
+                    "soname": parsed.soname,
+                    "dt_needed": parsed.needed,
+                }
+            )
+
     keystore_rc_name = "system/etc/init/keystore2.rc"
     if keystore_rc_name in stock:
         raise SystemExit("Hotdog stock unexpectedly contains Keystore2 init")
@@ -600,6 +827,12 @@ def main() -> None:
         raise SystemExit("unexpected TWRP Keystore2 service declaration")
     if re.search(r"^on\s+(?:late-init|boot)", keystore_rc, re.MULTILINE):
         raise SystemExit("Keystore2 init contains an unsafe automatic-start trigger")
+    keystore_rc = replace_once(
+        keystore_rc,
+        FOREGROUND_WRITEPID,
+        "",
+        "Keystore2 missing recovery cpuset write",
+    )
     keystore_data = keystore_rc.replace(source_service, target_service, 1).encode("utf-8")
     keystore_entry = replace(
         keystore_rc_source, name=keystore_rc_name, ino=next_ino, data=keystore_data

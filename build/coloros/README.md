@@ -28,7 +28,7 @@ TWRP namespaces.
 | `recovery.patch` | `bootable/recovery` | `c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e` |
 | `security.patch` | `system/security` | `0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523` |
 | `task-profiles.patch` | `system/core` | `452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364` |
-| `vold.patch` | `system/vold` | `e2a6a67c7dce06c8e701135fd6c304b4df54d8e8e740186354083fdb521a0f7b` |
+| `vold.patch` | `system/vold` | `78fdd04c6c1dce9a2c004c16dcfb3b39c91b9539038104f0e89acaac81638ce8` |
 
 The workflow verifies each checksum before applying it, checks the expected
 changed path set, rejects legacy unsafe fallbacks, audits the linked ELFs, and
