@@ -446,6 +446,7 @@ def main() -> None:
     recovery_data = require_data(final_index, "system/tw/bin/recovery")
     for marker, label in (
         (b"[OPLUS V58 PWDPROBE]", "recovery-owned password protector probe"),
+        (b"[OPLUS V59 SETUPGUARD]", "exact OEM passwordless setup guard"),
         (b"guarded parent-process CE install", "guarded ColorOS CE installer"),
         (b"unsupported entry set in ", "fail-closed ColorOS CE layout allowlist"),
         (b"layout requires a non-wrapped data key", "direct-AES ColorOS CE layout"),

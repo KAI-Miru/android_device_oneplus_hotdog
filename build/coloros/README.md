@@ -38,6 +38,7 @@ TWRP namespaces.
 | `recovery.patch` | `bootable/recovery` | `c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e` |
 | `recovery-no-credential.patch` | `bootable/recovery` | `a79e9a761ded5640f4413c48191fee3bc511e7eb15f316cbac8aa0f6b264298d` |
 | `recovery-password-probe.patch` | `bootable/recovery` | `beaee1382a16e14a3d7bc238e357e1953c774f24ede6ec07f445c853436c477a` |
+| `recovery-setup-de-ce-guard.patch` | `bootable/recovery` | `45e38fa9fd62af7854ec6b109812d53c6edee70c103403b400b2301ad045e507` |
 | `security.patch` | `system/security` | `0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523` |
 | `task-profiles.patch` | `system/core` | `452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364` |
 | `vold.patch` | `system/vold` | `034b64defe6e7ff10b91e8948e0f2ac19da3a7f434bb03e9e6351fba283f2cda` |

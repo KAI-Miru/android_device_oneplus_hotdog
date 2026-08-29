@@ -189,6 +189,7 @@ jobs:
           c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e  recovery.patch
           a79e9a761ded5640f4413c48191fee3bc511e7eb15f316cbac8aa0f6b264298d  recovery-no-credential.patch
           beaee1382a16e14a3d7bc238e357e1953c774f24ede6ec07f445c853436c477a  recovery-password-probe.patch
+          45e38fa9fd62af7854ec6b109812d53c6edee70c103403b400b2301ad045e507  recovery-setup-de-ce-guard.patch
           0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523  security.patch
           452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364  task-profiles.patch
           034b64defe6e7ff10b91e8948e0f2ac19da3a7f434bb03e9e6351fba283f2cda  vold.patch
@@ -208,6 +209,7 @@ jobs:
           apply_patch bootable/recovery "$patch_dir/recovery.patch"
           apply_patch bootable/recovery "$patch_dir/recovery-no-credential.patch"
           apply_patch bootable/recovery "$patch_dir/recovery-password-probe.patch"
+          apply_patch bootable/recovery "$patch_dir/recovery-setup-de-ce-guard.patch"
           apply_patch bootable/recovery "$patch_dir/keystore-service.patch"
           apply_patch system/core "$patch_dir/task-profiles.patch"
           apply_patch system/vold "$patch_dir/vold.patch"
@@ -239,6 +241,7 @@ jobs:
           grep -Fq '[OPLUS V57 NOCREDENTIAL]' bootable/recovery/oplus_h40_decrypt.cpp
           grep -Fq '[OPLUS V58 PWDPROBE]' bootable/recovery/oplus_h40_decrypt.cpp
           grep -Fq 'ProbeUser0PasswordProtector' bootable/recovery/oplus_h40_decrypt.cpp
+          grep -Fq '[OPLUS V59 SETUPGUARD]' bootable/recovery/oplus_h40_decrypt.cpp
           grep -Fq '[OPLUS V57 NOCREDENTIAL]' system/vold/FsCrypt.cpp
           grep -Fq 'direct-aes-minimal' system/vold/FsCrypt.cpp
           grep -Fq 'direct-aes-legacy-none' system/vold/FsCrypt.cpp
