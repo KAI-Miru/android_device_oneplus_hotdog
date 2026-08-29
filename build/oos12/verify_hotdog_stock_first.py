@@ -445,6 +445,7 @@ def main() -> None:
     require_marker(require_data(final_index, "system/tw/bin/recovery"), b"[H40 V51 PARENT]", "ColorOS adapter marker")
     recovery_data = require_data(final_index, "system/tw/bin/recovery")
     for marker, label in (
+        (b"[OPLUS V58 PWDPROBE]", "recovery-owned password protector probe"),
         (b"guarded parent-process CE install", "guarded ColorOS CE installer"),
         (b"unsupported entry set in ", "fail-closed ColorOS CE layout allowlist"),
         (b"layout requires a non-wrapped data key", "direct-AES ColorOS CE layout"),

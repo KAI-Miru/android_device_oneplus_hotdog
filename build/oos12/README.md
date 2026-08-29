@@ -30,6 +30,10 @@ canonical invocation and pins every source input.
   manifests, decryption markers, fstab, boot components, partition size, and
   AVB structure.
 
+The decryption adapter classifies a missing user-0 `.pwd` protector itself and
+does not enter the stock ColorOS password-type ABI on the credential-free path;
+the guarded parent-process CE-key proof remains authoritative.
+
 The stock overlay also restores `/bin`, `/sbin/sh`, and the fixed
 `/etc/mke2fs.conf` path without replacing the stock `/etc` tree. The scripts
 fail closed on missing paths, hash drift, incomplete feature bundles, duplicate
