@@ -450,6 +450,7 @@ def main() -> None:
         (b"[OPLUS DECRYPT] password state: validated .pwd protector; OEM password-type call permitted", "recovery-owned password protector probe"),
         (b"[OPLUS DECRYPT] setup guard:", "exact OEM passwordless setup guard"),
         (b"[OPLUS DECRYPT] password state: OEM reports no active credential; treating retained .pwd as advisory metadata", "retained password-protector state resolver"),
+        (b"[OPLUS DECRYPT] no credential: validated nopassword stretching", "canonical passwordless Keymaster stretching validator"),
         (b"guarded parent-process CE install", "guarded ColorOS CE installer"),
         (b"unsupported entry set in ", "fail-closed ColorOS CE layout allowlist"),
         (b"layout requires a non-wrapped data key", "direct-AES ColorOS CE layout"),

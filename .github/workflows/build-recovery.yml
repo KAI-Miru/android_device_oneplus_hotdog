@@ -193,7 +193,7 @@ jobs:
           0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523  security.patch
           452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364  task-profiles.patch
           b1664fe7e29b500310e4e4fb6a3f108ddcbe399d50ce66497d58c3fc627b07dd  vold.patch
-          077d150773b512f110b202472e7a4558f4bc7171b5a992417523be0b6490e86b  vold-no-credential.patch
+          18df63112bac56871e54b6d37e6e185eb5ec8bee179ba39c2ed9bfbe66fd256f  vold-no-credential.patch
           EOF
           ) | tee "$GITHUB_WORKSPACE/patch-checksums.txt"
 
@@ -251,6 +251,9 @@ jobs:
           grep -Fq '"encrypted_key", "secdiscardable", "stretching", "version"};' \
             system/vold/FsCrypt.cpp
           grep -Fq '"stretching", 4, "none"' system/vold/FsCrypt.cpp
+          grep -Fq '"stretching", 10, "nopassword"' system/vold/FsCrypt.cpp
+          grep -Fq '[OPLUS DECRYPT] no credential: validated nopassword stretching' \
+            system/vold/FsCrypt.cpp
           grep -Fq '"secdiscardable", 1 << 14' system/vold/FsCrypt.cpp
           grep -Fq '[OPLUS DECRYPT] CE layout:' system/vold/FsCrypt.cpp
           grep -Fq 'GetKeyUpgradeLock()' system/vold/KeyStorage.cpp
