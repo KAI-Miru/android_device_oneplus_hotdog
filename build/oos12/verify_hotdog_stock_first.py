@@ -442,11 +442,14 @@ def main() -> None:
     require(dlopen.get("unresolved_strong_symbol_groups") == 0, "decrypt load group has unresolved strong symbols")
     require(dlopen.get("dt_needed_closure_count") == len(dlopen.get("dependency_targets", [])), "decrypt closure count mismatch")
 
-    require_marker(require_data(final_index, "system/tw/bin/recovery"), b"[H40 V51 PARENT]", "ColorOS adapter marker")
+    require_marker(require_data(final_index, "system/tw/bin/recovery"), b"[OPLUS DECRYPT] parent key install:", "ColorOS adapter marker")
     recovery_data = require_data(final_index, "system/tw/bin/recovery")
+    require(b"OEM probe contradicted the validated .pwd protector" not in recovery_data,
+            "obsolete retained-.pwd fatal branch survived")
     for marker, label in (
-        (b"[OPLUS V58 PWDPROBE]", "recovery-owned password protector probe"),
-        (b"[OPLUS V59 SETUPGUARD]", "exact OEM passwordless setup guard"),
+        (b"[OPLUS DECRYPT] password state: validated .pwd protector; OEM password-type call permitted", "recovery-owned password protector probe"),
+        (b"[OPLUS DECRYPT] setup guard:", "exact OEM passwordless setup guard"),
+        (b"[OPLUS DECRYPT] password state: OEM reports no active credential; treating retained .pwd as advisory metadata", "retained password-protector state resolver"),
         (b"guarded parent-process CE install", "guarded ColorOS CE installer"),
         (b"unsupported entry set in ", "fail-closed ColorOS CE layout allowlist"),
         (b"layout requires a non-wrapped data key", "direct-AES ColorOS CE layout"),

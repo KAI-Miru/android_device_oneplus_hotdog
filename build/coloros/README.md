@@ -35,14 +35,14 @@ TWRP namespaces.
 | `binder.patch` | `frameworks/native` | `bc1398b4901403a33d7ad80a171ba95974ba2c938558bc10b69ff350e8850895` |
 | `keystore-service.patch` | `bootable/recovery` | `29ef6a93de27f17dfb741cc3bf93eaf063cefacd739a8625e1c9b8e3f668156c` |
 | `openaes.patch` | `bootable/recovery` | `be435c026ea0af8d979c71dde853f6920d68bab7a44a40a12b810e67da86a673` |
-| `recovery.patch` | `bootable/recovery` | `c196b8bd497039ae9ec7587212d47e0fe105867982b4ee06a02bbe30507b464e` |
-| `recovery-no-credential.patch` | `bootable/recovery` | `a79e9a761ded5640f4413c48191fee3bc511e7eb15f316cbac8aa0f6b264298d` |
-| `recovery-password-probe.patch` | `bootable/recovery` | `beaee1382a16e14a3d7bc238e357e1953c774f24ede6ec07f445c853436c477a` |
-| `recovery-setup-de-ce-guard.patch` | `bootable/recovery` | `45e38fa9fd62af7854ec6b109812d53c6edee70c103403b400b2301ad045e507` |
+| `recovery.patch` | `bootable/recovery` | `ccd7231d66b3599203c8fde236ec4f9ca90bab3118239d67f5547f3c0032dbe5` |
+| `recovery-no-credential.patch` | `bootable/recovery` | `491f78e08921259749cc1333191ba12c0a73d86bf504822f1f445056870a24f5` |
+| `recovery-password-probe.patch` | `bootable/recovery` | `91033f9fb2238c54bd88e0cb50f8d684e8ffcd3c3491ca9dba635d0688931b0f` |
+| `recovery-setup-de-ce-guard.patch` | `bootable/recovery` | `214fb48a0372dfef489235ab693024a1a15dac7d676398883a51dfc781d53192` |
 | `security.patch` | `system/security` | `0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523` |
 | `task-profiles.patch` | `system/core` | `452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364` |
-| `vold.patch` | `system/vold` | `034b64defe6e7ff10b91e8948e0f2ac19da3a7f434bb03e9e6351fba283f2cda` |
-| `vold-no-credential.patch` | `system/vold` | `ee2472e7bb81f320d2fd473cedadc3db2f475fd15551beb3c4948d73522e7199` |
+| `vold.patch` | `system/vold` | `b1664fe7e29b500310e4e4fb6a3f108ddcbe399d50ce66497d58c3fc627b07dd` |
+| `vold-no-credential.patch` | `system/vold` | `077d150773b512f110b202472e7a4558f4bc7171b5a992417523be0b6490e86b` |
 
 The workflow verifies each checksum before applying it, checks the expected
 changed path set, rejects legacy unsafe fallbacks, audits the linked ELFs, and
