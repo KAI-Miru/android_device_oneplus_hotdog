@@ -409,8 +409,25 @@ def main() -> None:
     )
     for asset in required_original_assets:
         require(asset in final_index, f"required TWRP compatibility asset is absent: /{asset}")
+    private_records = {record["target"]: record for record in private["records"]}
+    require(private.get("prompt_hostname") == "hotdog", "wrong manifested shell prompt hostname")
+    for prompt_path in ("system/etc/mkshrc", "system/etc/bash/bashrc"):
+        prompt_record = private_records[prompt_path]
+        require(
+            prompt_record.get("transform") == "fixed_device_prompt_hostname"
+            and prompt_record.get("prompt_hostname") == "hotdog",
+            f"shell prompt transformation is not audited: /{prompt_path}",
+        )
     require_data(final_index, "file_contexts")
-    require_data(final_index, "system/etc/mkshrc")
+    mkshrc = require_data(final_index, "system/etc/mkshrc")
+    bashrc = require_data(final_index, "system/etc/bash/bashrc")
+    require(b": ${HOSTNAME:=hotdog}" in mkshrc, "Hotdog mksh prompt hostname is absent")
+    require(b"export HOSTNAME=hotdog" in bashrc, "Hotdog Bash prompt hostname is absent")
+    require(
+        b"getprop ro.product.device" not in mkshrc
+        and b"getprop ro.product.device" not in bashrc,
+        "shell prompt still inherits the mounted ROM product identity",
+    )
     require_symlink(final_index, "sbin/bash", b"/system/bin/bash", "legacy Bash route")
     require_symlink(final_index, "etc/bash", b"/system/etc/bash", "Bash configuration route")
     require_symlink(final_index, "etc/nano", b"/system/etc/nano", "Nano configuration route")

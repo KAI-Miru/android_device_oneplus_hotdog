@@ -644,6 +644,7 @@ jobs:
             --elf-audit-dir "$tools" \
             --output "$work/private-overlay.cpio" \
             --manifest "$work/private-overlay.json" \
+            --prompt-hostname hotdog \
             --required-helper system/bin/minadbd \
             --required-helper system/bin/sload_f2fs \
             --required-helper system/bin/resize2fs \
