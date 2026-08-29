@@ -475,6 +475,11 @@ def main() -> None:
         (b"guarded parent-process CE install", "guarded ColorOS CE installer"),
         (b"unsupported entry set in ", "fail-closed ColorOS CE layout allowlist"),
         (b"layout requires a non-wrapped data key", "direct-AES ColorOS CE layout"),
+        (b"[OPLUS DECRYPT] partition refresh: deferred recursive /data backup-size scan", "deferred startup data-size scan"),
+        (b"[OPLUS DECRYPT] partition refresh: reusing post-decrypt startup state", "single post-decrypt startup refresh"),
+        (b"[OPLUS DECRYPT] partition refresh: skipping redundant data-media startup refresh", "redundant data-media refresh guard"),
+        (b"[OPLUS DECRYPT] partition refresh: resolving deferred /data backup size", "on-demand backup-size refresh"),
+        (b"Data decrypted automatically.", "neutral automatic-decryption message"),
     ):
         require_marker(recovery_data, marker, label)
     credential_helper = require_data(final_index, STOCK_CREDENTIAL_HELPER)
