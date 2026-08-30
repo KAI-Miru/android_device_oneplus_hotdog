@@ -41,7 +41,7 @@ TWRP namespaces.
 | `recovery-password-probe.patch` | `bootable/recovery` | `91033f9fb2238c54bd88e0cb50f8d684e8ffcd3c3491ca9dba635d0688931b0f` |
 | `recovery-setup-de-ce-guard.patch` | `bootable/recovery` | `214fb48a0372dfef489235ab693024a1a15dac7d676398883a51dfc781d53192` |
 | `recovery-fast-startup.patch` | `bootable/recovery` | `f064ae92c4dfbea09b6864072f0668034f38220c0d47874621c45a923f5b8bbc` |
-| `recovery-data-lifecycle.patch` | `bootable/recovery` | `9a5556aac763b195b4369aeaa3084924343afff60020c310402b9d060f789cab` |
+| `recovery-data-lifecycle.patch` | `bootable/recovery` | `a5f5800107fe21b425b0efe3eb8fbfb775d9ea038cc4df5851bb9fbe03a16fce` |
 | `security.patch` | `system/security` | `0cd8269b20fa83fcfff42eee02a6a0be8a0d8a74bb2ee9baba8449dc26441523` |
 | `task-profiles.patch` | `system/core` | `452deadb4638086f1487df59e853dbba2bf295ab63da983232f5e9477b70a364` |
 | `vold.patch` | `system/vold` | `0e77fb79b487c3e3c37c39d433a2ed51b2c2748da2e92778bd81a15cb180cd9e` |
