@@ -463,6 +463,11 @@ def main() -> None:
     recovery_data = require_data(final_index, "system/tw/bin/recovery")
     require(b"OEM probe contradicted the validated .pwd protector" not in recovery_data,
             "obsolete retained-.pwd fatal branch survived")
+    for obsolete in (
+        b"deferred recursive /data backup-size scan",
+        b"resolving deferred /data backup size",
+    ):
+        require(obsolete not in recovery_data, f"obsolete deferred backup-size path survived: {obsolete!r}")
     for marker, label in (
         (b"[OPLUS DECRYPT] password state: validated .pwd protector; OEM password-type call permitted", "recovery-owned password protector probe"),
         (b"[OPLUS DECRYPT] setup guard:", "exact OEM passwordless setup guard"),
@@ -475,10 +480,10 @@ def main() -> None:
         (b"guarded parent-process CE install", "guarded ColorOS CE installer"),
         (b"unsupported entry set in ", "fail-closed ColorOS CE layout allowlist"),
         (b"layout requires a non-wrapped data key", "direct-AES ColorOS CE layout"),
-        (b"[OPLUS DECRYPT] partition refresh: deferred recursive /data backup-size scan", "deferred startup data-size scan"),
+        (b"Calculating Data backup size after decryption...", "visible post-decrypt data-size scan"),
         (b"[OPLUS DECRYPT] partition refresh: reusing post-decrypt startup state", "single post-decrypt startup refresh"),
         (b"[OPLUS DECRYPT] partition refresh: skipping redundant data-media startup refresh", "redundant data-media refresh guard"),
-        (b"[OPLUS DECRYPT] partition refresh: resolving deferred /data backup size", "on-demand backup-size refresh"),
+        (b"Data backup size calculated.", "post-decrypt data-size completion message"),
         (b"Data decrypted automatically.", "neutral automatic-decryption message"),
     ):
         require_marker(recovery_data, marker, label)
