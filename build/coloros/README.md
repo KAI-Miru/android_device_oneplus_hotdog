@@ -35,7 +35,7 @@ TWRP namespaces.
 | `binder.patch` | `frameworks/native` | `bc1398b4901403a33d7ad80a171ba95974ba2c938558bc10b69ff350e8850895` |
 | `keystore-service.patch` | `bootable/recovery` | `29ef6a93de27f17dfb741cc3bf93eaf063cefacd739a8625e1c9b8e3f668156c` |
 | `openaes.patch` | `bootable/recovery` | `be435c026ea0af8d979c71dde853f6920d68bab7a44a40a12b810e67da86a673` |
-| `recovery.patch` | `bootable/recovery` | `ccd7231d66b3599203c8fde236ec4f9ca90bab3118239d67f5547f3c0032dbe5` |
+| `recovery.patch` | `bootable/recovery` | `b2a498f291ab0089f90e0bfbcadc484d4ab9143044237b39ba1c86d51e70f4e4` |
 | `recovery-no-credential.patch` | `bootable/recovery` | `491f78e08921259749cc1333191ba12c0a73d86bf504822f1f445056870a24f5` |
 | `recovery-password-probe.patch` | `bootable/recovery` | `91033f9fb2238c54bd88e0cb50f8d684e8ffcd3c3491ca9dba635d0688931b0f` |
 | `recovery-setup-de-ce-guard.patch` | `bootable/recovery` | `214fb48a0372dfef489235ab693024a1a15dac7d676398883a51dfc781d53192` |

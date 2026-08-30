@@ -483,6 +483,7 @@ def main() -> None:
         (b"Calculating Data backup size after decryption...", "visible post-decrypt data-size scan"),
         (b"[OPLUS DECRYPT] partition refresh: reusing post-decrypt startup state", "single post-decrypt startup refresh"),
         (b"[OPLUS DECRYPT] partition refresh: skipping redundant data-media startup refresh", "redundant data-media refresh guard"),
+        (b"[OPLUS DECRYPT] data unmount: OEM credential services stopped", "post-decrypt data-unmount quiesce hook"),
         (b"Data backup size calculated.", "post-decrypt data-size completion message"),
         (b"Data decrypted automatically.", "neutral automatic-decryption message"),
     ):
