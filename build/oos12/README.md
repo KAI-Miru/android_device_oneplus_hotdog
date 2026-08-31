@@ -39,3 +39,9 @@ The stock overlay also restores `/bin`, `/sbin/sh`, and the fixed
 fail closed on missing paths, hash drift, incomplete feature bundles, duplicate
 CPIO entries, unexpected firmware layout, unresolved symbols, or component
 changes.
+
+The generated recovery fstab has exactly one active `/data` row: encrypted
+ext4 with `inlinecrypt`, `fileencryption=ice`, the metadata key directory, and
+quota. Final-image verification also requires the recovery formatter markers
+for ext4 `encrypt`, `verity`, `quota`, and `project`; an F2FS fallback or a
+generic ext4 format is not accepted.

@@ -123,6 +123,26 @@ def verify_fstab(text: str, name: str) -> None:
         {(row[0], row[1], row[2]) for row in rows if row not in logical} == physical,
         f"{name} does not match the audited physical partition table",
     )
+    data_rows = [row for row in rows if row[1] == "/data"]
+    require(len(data_rows) == 1, f"{name} must contain exactly one active /data row")
+    data_row = data_rows[0]
+    require(
+        data_row[:3]
+        == ["/dev/block/bootdevice/by-name/userdata", "/data", "ext4"],
+        f"{name} does not use physical ext4 userdata",
+    )
+    require("inlinecrypt" in data_row[3].split(","), f"{name} /data lacks inlinecrypt")
+    require(
+        {
+            "wait",
+            "check",
+            "formattable",
+            "fileencryption=ice",
+            "keydirectory=/metadata/vold/metadata_encryption",
+            "quota",
+        }.issubset(data_row[-1].split(",")),
+        f"{name} /data lacks the encrypted ext4 fs_mgr contract",
+    )
     forbidden_mounts = {
         "/special_preload",
         "/external_sd",
@@ -486,6 +506,8 @@ def main() -> None:
         (b"[OPLUS DECRYPT] data unmount: OEM credential services stopped", "post-decrypt data-unmount quiesce hook"),
         (b"[TWRP SNAPSHOT] no active virtual A/B update; data wipe may continue", "no-update data-wipe fast path"),
         (b"[TWRP SNAPSHOT] removing stale recovery mapping before merge check:", "repartition-safe snapshot remap"),
+        (b"encrypt,verity,quota,project", "Android ext4 userdata feature list"),
+        (b"[TWRP FORMAT] enforcing Android ext4 userdata features: %s", "ext4 userdata formatter marker"),
         (b"Data backup size calculated.", "post-decrypt data-size completion message"),
         (b"Data decrypted automatically.", "neutral automatic-decryption message"),
     ):
