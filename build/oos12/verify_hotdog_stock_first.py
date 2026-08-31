@@ -507,7 +507,7 @@ def main() -> None:
         (b"[TWRP SNAPSHOT] no active virtual A/B update; data wipe may continue", "no-update data-wipe fast path"),
         (b"[TWRP SNAPSHOT] removing stale recovery mapping before merge check:", "repartition-safe snapshot remap"),
         (b"encrypt,verity,quota,project", "Android ext4 userdata feature list"),
-        (b"[TWRP FORMAT] enforcing Android ext4 userdata features: %s", "ext4 userdata formatter marker"),
+        (b"I:[TWRP FORMAT] enforcing Android ext4 userdata features: %s", "ext4 userdata formatter marker"),
         (b"Data backup size calculated.", "post-decrypt data-size completion message"),
         (b"Data decrypted automatically.", "neutral automatic-decryption message"),
     ):
